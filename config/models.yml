@@ -1,0 +1,49 @@
+models:
+  adaptive_greedy_threshold:
+    name: 'adaptive_greedy_threshold'
+    marker: '*'
+    color: darkviolet
+  adaptive_greedy_percentile:
+    name: 'adaptive_greedy_percentile'
+    marker: 'h'
+    color: coral
+  adaptive_greedy_weighted:
+    name: 'adaptive_greedy_weighted'
+    marker: '^'
+    color: pink
+  bootstrapped_ts:
+    name: 'bootstrapped_ts'
+    marker: '<'
+    color: red
+  bootstrapped_ucb:
+    name: 'bootstrapped_ucb'
+    marker: '>'
+    color: black
+  epsilon_greedy_decay:
+    name: 'epsilon_greedy_decay'
+    marker: 'H'
+    color: silver
+  epsilon_greedy:
+    name: 'epsilon_greedy'
+    marker: 'p'
+    color: gold
+  explore_first:
+    name: 'explore_first'
+    marker: '8'
+    color: green
+  active_explorer:
+    name: 'active_explorer'
+    marker: '1'
+    color: cyan
+  separate_classifiers:
+    name: 'separate_classifiers'
+    marker: 'v'
+    color: skyblue
+  softmax_explorer:
+    name: 'softmax_explorer'
+    marker: 'o'
+    color: orange
+  random_policy:
+    name: 'random_policy'
+    color: olive
+  

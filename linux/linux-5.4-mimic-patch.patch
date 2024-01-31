@@ -1,0 +1,42 @@
+diff -Naur linux-5.4.234-base/include/net/inet_connection_sock.h linux-5.4.234-patched/include/net/inet_connection_sock.h
+--- linux-5.4.234-base/include/net/inet_connection_sock.h	2023-03-03 04:41:49.000000000 -0600
++++ linux-5.4.234-patched/include/net/inet_connection_sock.h	2023-03-10 11:59:40.611747790 -0600
+@@ -138,8 +138,8 @@
+ 	u32			  icsk_probes_tstamp;
+ 	u32			  icsk_user_timeout;
+ 
+-	u64			  icsk_ca_priv[104 / sizeof(u64)];
+-#define ICSK_CA_PRIV_SIZE      (13 * sizeof(u64))
++	u64			  icsk_ca_priv[200 / sizeof(u64)];
++#define ICSK_CA_PRIV_SIZE	sizeof_field(struct inet_connection_sock, icsk_ca_priv)
+ };
+ 
+ #define ICSK_TIME_RETRANS	1	/* Retransmit timer */
+diff -Naur linux-5.4.234-base/include/net/tcp.h linux-5.4.234-patched/include/net/tcp.h
+--- linux-5.4.234-base/include/net/tcp.h	2023-03-03 04:41:49.000000000 -0600
++++ linux-5.4.234-patched/include/net/tcp.h	2023-03-10 12:01:00.315867797 -0600
+@@ -1071,6 +1071,8 @@
+ 	 * after all the ca_state processing. (optional)
+ 	 */
+ 	void (*cong_control)(struct sock *sk, const struct rate_sample *rs);
++	/* Mutant custom congestion control for bbr support */
++	void (*mutant_cong_control)(struct sock *sk, const struct rate_sample *rs, u32 ack, u32 acked, int flag);
+ 	/* get info for inet_diag (optional) */
+ 	size_t (*get_info)(struct sock *sk, u32 ext, int *attr,
+ 			   union tcp_cc_info *info);
+diff -Naur linux-5.4.234-base/net/ipv4/tcp_input.c linux-5.4.234-patched/net/ipv4/tcp_input.c
+--- linux-5.4.234-base/net/ipv4/tcp_input.c	2023-03-03 04:41:49.000000000 -0600
++++ linux-5.4.234-patched/net/ipv4/tcp_input.c	2023-03-10 11:59:40.615747797 -0600
+@@ -3352,6 +3352,12 @@
+ {
+ 	const struct inet_connection_sock *icsk = inet_csk(sk);
+ 
++	/* if Mutant congestion control is selected */
++	if (icsk->icsk_ca_ops->mutant_cong_control) {
++		icsk->icsk_ca_ops->mutant_cong_control(sk, rs, ack, acked_sacked, flag);
++		return;
++	}
++
+ 	if (icsk->icsk_ca_ops->cong_control) {
+ 		icsk->icsk_ca_ops->cong_control(sk, rs);
+ 		return;

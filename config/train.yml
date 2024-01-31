@@ -1,0 +1,20 @@
+train_episodes: 30
+test_episodes: 1
+num_features: 9
+num_fields_kernel: 12
+window_len: 10
+
+jiffies_per_state: 5
+steps_per_episode: 100
+
+lr: 1e-3
+step_wait_seconds: 1
+
+num_actions: 5
+min_rtt: 10 # ms
+bw: 12 # Mbps
+q_size: 100 # packets
+
+reward:
+  zeta: 5
+  kappa: 2

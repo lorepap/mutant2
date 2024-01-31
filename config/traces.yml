@@ -1,0 +1,25 @@
+traces:
+  att.lte.driving:
+    name: 'att.lte.driving'
+  att.lte.driving.2016:
+    name: 'att.lte.driving.2016'
+  tm.lte.driving:
+    name: 'tm.lte.driving'
+  tm.lte.short:
+    name: 'tm.lte.short'
+  tm.umts.driving:
+    name: 'tm.umts.driving'
+  vz.evdo.driving:
+    name: 'vz.evdo.driving'
+  vz.lte.driving:
+    name: 'vz.lte.driving'
+  vz.lte.short:
+    name: 'vz.lte.short'
+  bus:
+    name: 'trace-3109898-bus'
+  timessquare:
+    name: 'trace-3189663-timessquare'
+  wired:
+    name: 'wired6'
+  # none:
+  #   name: 'none'
