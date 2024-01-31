@@ -1,0 +1,31 @@
+diff -Naur linux-5.4.231/include/net/tcp.h linux-5.4.231-mutant/include/net/tcp.h
+--- linux-5.4.231/include/net/tcp.h	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/include/net/tcp.h	2024-01-31 15:16:57.929085232 -0600
+@@ -1072,6 +1072,11 @@
+ 	 */
+ 	void (*cong_control)(struct sock *sk, const struct rate_sample *rs);
+ 	/* get info for inet_diag (optional) */
++	/* Mutant custom congestion control function 
++	 Mutant implements a wrapper tcp_congestion ops struct which supports 
++	 both cong_control and cong_avoid tcp_congestion_ops functions
++	*/	
++	u32 (*mutant_tcp_congestion_control)(struct sock *sk, const struct rate_sample *rs, u32 ack, u32 acked, int flag);
+ 	size_t (*get_info)(struct sock *sk, u32 ext, int *attr,
+ 			   union tcp_cc_info *info);
+ 
+diff -Naur linux-5.4.231/net/ipv4/tcp_input.c linux-5.4.231-mutant/net/ipv4/tcp_input.c
+--- linux-5.4.231/net/ipv4/tcp_input.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_input.c	2024-01-31 15:13:19.129180144 -0600
+@@ -3352,6 +3352,12 @@
+ {
+ 	const struct inet_connection_sock *icsk = inet_csk(sk);
+ 
++	if (icsk->icsk_ca_ops->mutant_tcp_cong_control) {
++		if (icsk->icsk_ca_ops->mutant_tcp_cong_control(sk, ack, acked_sacked,
++							   flag) == 0);
++			return;
++	}
++
+ 	if (icsk->icsk_ca_ops->cong_control) {
+ 		icsk->icsk_ca_ops->cong_control(sk, rs);
+ 		return;
