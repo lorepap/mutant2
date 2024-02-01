@@ -70,9 +70,11 @@ class MabEnvironment(gym.Env):
         self.cwnd = []
 
         # Feature extractor
+        self.prev_delivered = None
         self.feature_names = self.config['features'] # List of features
+        self.stat_features= self.config['stat_features']
         self.window_sizes = self.config['window_sizes']
-        self.feat_extractor = FeatureExtractor(self.feature_names) # window_sizes=(10, 200, 1000)
+        self.feat_extractor = FeatureExtractor(self.stat_features) # window_sizes=(10, 200, 1000)
 
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
@@ -132,13 +134,14 @@ class MabEnvironment(gym.Env):
         collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
 
         # Compute statistics for the features
-        features_to_update = [collected_data['rtt'], collected_data['rtt_dev'], collected_data['lost'], collected_data['in_flight'], collected_data['thruput']]
-        self.feat_extractor.update(features_to_update)
+        # features_to_update = [collected_data['rtt'], collected_data['rtt_dev'], collected_data['lost'], collected_data['in_flight'], collected_data['thruput']]
+
+        self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
         self.feat_extractor.compute_statistics()
         feat_statistics = self.feat_extractor.get_statistics()
     
         for size in self.window_sizes:
-            for feature in self.features:
+            for feature in self.stat_features:
                 feat_averages.append(feat_statistics[size]['avg'][feature])
                 feat_min.append(feat_statistics[size]['min'][feature])
                 feat_max.append(feat_statistics[size]['max'][feature])

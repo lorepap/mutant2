@@ -35,6 +35,13 @@ features:
   - delivery_rate
   - prev_proto_id
 
+# TODO: add rtt_rate
+stat_features:
+  - rtt
+  - rtt_dev
+  - lost
+  - in_flight
+
 window_sizes:
   - 10
   - 200
