@@ -24,6 +24,7 @@ class MabRunner():
         with open('config/train.yml', 'r') as file:
             config = yaml.safe_load(file)
         
+        self.now = utils.time_to_str()
         # Set up communication with kernel
         self.cm = CommManager(log_dir_name='log/iperf', rtt=config['min_rtt'], bw=config['bw'], bdp_mult=config['bdp_mult']) #iperf_dir, time
 
@@ -40,14 +41,15 @@ class MabRunner():
         self.step_wait_time = config['step_wait_seconds']
         self.steps_per_episode = config['steps_per_episode']
         self.num_fields_kernel = config['num_fields_kernel']
-        
+        self.training_steps = config['train_episodes'] * self.steps_per_episode
+
         self.model = MabAgent(self.nchoices, self.moderator)
         
         # TODO: checkpoint filepath to be changed for a better naming convention
+        self.model.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.now}')
         if not checkpoint_filepath:
             self.checkpoint_filepath = os.path.join(
                 context.entry_dir, f'{self.model_path}.{self.model.get_model_name()}.h5')
-            self.model.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.now}')
 
         self.environment = MabEnvironment(self.cm, self.moderator, config)
         self.training_steps = config['train_episodes'] * self.steps_per_episode
@@ -109,7 +111,7 @@ class MabRunner():
         cb: TrainingCallback = TrainingCallback(
             log_file_path=os.path.join(
             context.entry_dir, 
-            f'log/mab/history/debug_{self.model.get_model_name()}.{now}.json'
+            f'log/mab/history/debug_{self.model.get_model_name()}.json'
             )
         )
         
@@ -127,7 +129,7 @@ class MabRunner():
         path = os.path.join(
             context.entry_dir, 
             self.history_dir,
-            f'episode_history_{self.model.get_model_name()}.{self.now}.json'
+            f'episode_history_{self.model.get_model_name()}.json'
             )
 
         import pandas as pd

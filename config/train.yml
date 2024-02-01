@@ -1,7 +1,7 @@
 train_episodes: 30
 test_episodes: 1
 num_features: 9
-num_fields_kernel: 12
+num_fields_kernel: 13
 window_len: 10
 
 jiffies_per_state: 5
@@ -13,8 +13,29 @@ step_wait_seconds: 1
 num_actions: 5
 min_rtt: 10 # ms
 bw: 12 # Mbps
-q_size: 100 # packets
+bdp_mult: 1
 
 reward:
   zeta: 5
   kappa: 2
+
+features:
+  - now
+  - cwnd
+  - rtt
+  - srtt
+  - rtt_dev
+  - rtt_min
+  - MSS
+  - delivered
+  - lost
+  - in_flight
+  - retransmitted
+  - thruput
+  - delivery_rate
+  - prev_proto_id
+
+window_sizes:
+  - 10
+  - 200
+  - 1000

@@ -46,7 +46,7 @@ class IperfClient(threading.Thread):
         
         # Search the output for the private IP address using a regular expression
         # pattern = r'inet (192(?:\.\d{1,3}){2}\.\d{1,3})'
-        pattern = r'inet (?:addr:)?(192(?:\.\d{1,3}){3})'
+        pattern = r'inet (?:addr:)?(10\.0\.2\.15)'       
         match = re.search(pattern, output)
 
         if match:
@@ -94,7 +94,7 @@ class IperfClient(threading.Thread):
                 '--downlink-queue=droptail', 
                 f'--downlink-queue-args="packets={self.q_size}"'
                ]
-        print(cmd)
+        # print(cmd)
         return cmd
 
     def _get_iperf_cmd(self):
@@ -115,7 +115,7 @@ class IperfClient(threading.Thread):
             self._set_ip_forwarding()
 
             cmd = self._get_mahimahi_cmd() + self._get_iperf_cmd()
-            print("[DEBUG] Command executing:", cmd)
+            # print("[DEBUG] Command executing:", cmd)
 
             check_call(cmd)
 

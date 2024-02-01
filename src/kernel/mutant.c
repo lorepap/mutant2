@@ -19,7 +19,6 @@ static u32 prev_proto_id = CUBIC;
 static bool switching_flag = false;
 
 
-
 // Wrapper struct to call the tcp_congestion_ops of the selected policy
 struct tcp_mutant_wrapper {
     struct tcp_congestion_ops *current_ops;
@@ -739,7 +738,8 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
 
     u32 now = tcp_jiffies32;
     u32 cwnd = tp->snd_cwnd;
-    u32 rtt = tp->srtt_us;
+    u32 rtt = tp->rack.rtt_us;
+    u32 srtt = tp->srtt_us;
     u32 rtt_dev = tp->mdev_us;
 	u32 rtt_min = tcp_min_rtt(tp);
     u16 MSS = tp->advmss;
@@ -760,9 +760,9 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
         do_div(thruput, tp->rate_interval_us);
     }
 
-    snprintf(message, MAX_PAYLOAD - 1, "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%llu",
-             now, cwnd, rtt, rtt_dev, rtt_min, MSS, delivered, lost,
-             in_flight, retransmitted, selected_proto_id, thruput);
+    snprintf(message, MAX_PAYLOAD - 1, "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%llu;%u",
+             now, cwnd, rtt, srtt, rtt_dev, rtt_min, MSS, delivered, lost,
+             in_flight, retransmitted, thruput, rate, prev_proto_id);
     
     // printk("Mutant %s: Sending message to user: %s", __FUNCTION__, message);
 

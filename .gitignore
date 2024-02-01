@@ -201,3 +201,4 @@ pid.txt
 # analysis/plots/thruput_vs_rtt
 **/*/debug_*
 traces/
+log/iperf/*

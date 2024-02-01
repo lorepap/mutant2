@@ -4,7 +4,6 @@ import warnings
 from copy import deepcopy
 import pickle
 from sklearn.linear_model import SGDClassifier
-from xgboost import XGBClassifier
 from contextualbandits.online import BootstrappedUCB, _BasePolicy
 
 import numpy as np
@@ -30,7 +29,6 @@ class MabAgent(Agent):
     def __init__(self, nchoices, moderator=None, **kwargs):
         super(MabAgent, self).__init__(**kwargs)
         # TODO: build id string for model
-        self.now = utils.time_to_str()
         self.moderator = moderator
         self.nchoices = nchoices
         self.base_algorithm = SGDClassifier(loss='log', max_iter=1000, tol=1e-3, shuffle=False, verbose=0)
@@ -113,9 +111,6 @@ class MabAgent(Agent):
 
     def get_model_name(self) -> str:
         return self.model_name
-
-    def get_orig_name(self) -> str:
-        return self.orig_name
 
     def reset_name(self) -> None:
         self.model_name = self.orig_name

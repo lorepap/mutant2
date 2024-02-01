@@ -9,10 +9,13 @@ import gym
 import numpy as np
 from gym import spaces
 from utilities import context, utils
+from utilities.feature_extractor import FeatureExtractor
 from comm.kernel_thread import KernelRequest
 from comm.netlink_communicator import NetlinkCommunicator
 from mab.moderator import Moderator
+import yaml
 from comm.comm import ACTION_FLAG
+
 import math
 
 
@@ -26,6 +29,7 @@ class MabEnvironment(gym.Env):
                  ):
 
         # self.moderator = moderator
+        self.config = config
         self.width_state = config['num_features'] # state dimension
         self.height_state = config['window_len']
 
@@ -65,6 +69,10 @@ class MabEnvironment(gym.Env):
         # self.normalizer = Normalizer(self.num_features_tmp)
         self.cwnd = []
 
+        # Feature extractor
+        self.feature_names = self.config['features'] # List of features
+        self.window_sizes = self.config['window_sizes']
+        self.feat_extractor = FeatureExtractor(self.feature_names) # window_sizes=(10, 200, 1000)
 
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
@@ -103,89 +111,95 @@ class MabEnvironment(gym.Env):
         s_tmp = np.array([])
         # state_n = np.array([])
         state = np.array([])
+        feat_averages = []
+        feat_min = []
+        feat_max = []
         received_jiffies = 0
 
         # Callbacks data
         self.features = []
         rws = []
         binary_rws = []
-
-
-        if self.with_kernel_thread:
-            print("[DEBUG] reading data from kernel...")
-            timestamp, cwnd, rtt, rtt_dev, rtt_min, self.mss, delivered, lost, in_flight, retrans, action,  = self._read_data()
-        else:
-            timestamp, cwnd, rtt, rtt_dev, rtt_min, self.mss, delivered, lost, in_flight, retrans, action = self._recv_data()
-
-
-        # Compute thr and loss rate from kernel statistics
-        rtt = rtt if rtt > 0 else 1e-5
-        # thr = cwnd * self.mss / (rtt/self.nb)
-        loss_rate = 0 if (lost + delivered) == 0 else lost / (lost + delivered)
-
-        # print(f"[DEBUG] {delivered}, {self.mss}, {cwnd}, {rtt}, {thr}, {cwnd*self.mss/(rtt/self.nb)}")
-
-        # Print kernel statistics
-        print(f"[DEBUG] cwnd: {cwnd}, rtt: {rtt}, rtt_dev: {rtt_dev}, rtt_min: {rtt_min}, \
-              mss: {self.mss}, delivered: {delivered}, lost: {lost}, in_flight: {in_flight}, \
-              retrans: {retrans}, action: {action}, thruput: {thr}")
-
-        delivered_diff = delivered - self.last_delivered
-        self.last_delivered = delivered
-        self.update_rtt(rtt)
-
-        # to ms TODO: check this value (kernel rtt should be in ms so it's already correct)
-        # rtt = rtt/1000
-        # rtt_dev = rtt_dev/1000
-        # rtt_min = rtt_min/1000
-
-        curr_kernel_features = np.array(
-            [cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr])
         
-        self.features.append(curr_kernel_features)
-        
-        # Number of total features which will be extracted during the step_wait time (switching time)
-        num_features_tmp = self.num_features_tmp
+        # Read kernel features
+        data = self._read_data()
+        collected_data = {name: value for name, value in zip(self.feature_names, data)}
 
-        curr_timestamp = timestamp
+        # Compute the last delivery (bytes) and the loss rate
+        self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
+        delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
+        self.prev_delivered = collected_data['delivered']
+        collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
 
+        # Compute statistics for the features
+        features_to_update = [collected_data['rtt'], collected_data['rtt_dev'], collected_data['lost'], collected_data['in_flight'], collected_data['thruput']]
+        self.feat_extractor.update(features_to_update)
+        self.feat_extractor.compute_statistics()
+        feat_statistics = self.feat_extractor.get_statistics()
+    
+        for size in self.window_sizes:
+            for feature in self.features:
+                feat_averages.append(feat_statistics[size]['avg'][feature])
+                feat_min.append(feat_statistics[size]['min'][feature])
+                feat_max.append(feat_statistics[size]['max'][feature])
+
+        feat_averages = np.array(feat_averages)
+        feat_min = np.array(feat_min)
+        feat_max = np.array(feat_max)
+
+        # Store the kernel feature to append to the state
+        curr_kernel_features = np.concatenate(([collected_data['rtt'], collected_data['rtt_dev'],
+                                collected_data['lost'], collected_data['in_flight'], collected_data['thruput']], 
+                                feat_averages, feat_min, feat_max))
+
+        curr_timestamp = collected_data['now']
         num_msg = 1
-
         start = time.time()
 
         # Read and record data for step_wait seconds
         while float(time.time() - start) <= float(self.step_wait):
-            if self.with_kernel_thread:
-                timestamp, cwnd, rtt, rtt_dev, rtt_min, self.mss, delivered, lost, in_flight, retrans, action, thr = self._read_data()
-            else:
-                timestamp, cwnd, rtt, rtt_dev, rtt_min, self.mss, delivered, lost, in_flight, retrans, action, thr = self._recv_data()
 
-            # thruput bit/s
-            rtt = rtt if rtt > 0 else 1e-5
-            # thr = (cwnd * self.mss) / (rtt/self.nb)
-            loss_rate = 0 if (lost + delivered) == 0 else lost / (lost + delivered)
+            data = self._read_data()
+            collected_data = {name: value for name, value in zip(self.feature_names, data)}
 
+            self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
+            delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
+            self.prev_delivered = collected_data['delivered']
+            collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
             
-            delivered_diff = delivered - self.last_delivered
-            self.last_delivered = delivered
-            self.update_rtt(rtt)
+            reward = pow(abs(collected_data['thruput'] - self.config['reward']['zeta'] * collected_data['loss_rate'] / collected_data['rtt']), self.config['reward']['kappa'])
+            collected_data['reward'] = reward
 
-            if timestamp != curr_timestamp:
+            features_to_update = [collected_data['rtt'], collected_data['rtt_dev'], collected_data['lost'], collected_data['in_flight'], collected_data['thruput']]
+            self.feat_extractor.update(features_to_update)
+            self.feat_extractor.compute_statistics()
+            for size in self.window_sizes:
+                for feature in self.features:
+                    feat_averages.append(feat_statistics[size]['avg'][feature])
+                    feat_min.append(feat_statistics[size]['min'][feature])
+                    feat_max.append(feat_statistics[size]['max'][feature])
+
+            feat_averages = np.array(feat_averages)
+            feat_min = np.array(feat_min)
+            feat_max = np.array(feat_max)
+
+            if collected_data['now'] != curr_timestamp:
                 curr_kernel_features = np.divide(curr_kernel_features, num_msg)
 
                 if s_tmp.shape[0] == 0:
                     s_tmp = np.array(curr_kernel_features).reshape(
-                        1, num_features_tmp)
+                        1, self.num_features_tmp)
                 else:
                     s_tmp = np.vstack(
-                        (s_tmp, np.array(curr_kernel_features).reshape(1, num_features_tmp))
+                        (s_tmp, np.array(curr_kernel_features).reshape(1, self.num_features_tmp))
                     )
 
-                curr_kernel_features = np.array(
-                    [cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr]
-                    )
+                # Store the kernel feature to append to the state
+                curr_kernel_features = np.concatenate(([collected_data['rtt'], collected_data['rtt_dev'],
+                                        collected_data['lost'], collected_data['in_flight'], collected_data['thruput']], 
+                                        feat_averages, feat_min, feat_max))
                 
-                curr_timestamp = timestamp
+                curr_timestamp = collected_data['now']
 
                 num_msg = 1
 
@@ -194,7 +208,9 @@ class MabEnvironment(gym.Env):
             else:
                 # sum new reading to existing readings
                 curr_kernel_features = np.add(curr_kernel_features,
-                            np.array([cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr]))
+                            np.concatenate(([collected_data['rtt'], collected_data['rtt_dev'],
+                                collected_data['lost'], collected_data['in_flight'], collected_data['thruput']], 
+                                feat_averages, feat_min, feat_max)))            
                 num_msg += 1
 
         # Kernel features for callbacks
@@ -203,8 +219,9 @@ class MabEnvironment(gym.Env):
         # Compute the mean of rewards
         for _, k_features in enumerate(s_tmp):
             # Extract individual features
-            cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr = k_features
-            rw = self.compute_reward(thr, loss_rate, rtt)
+            # cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr = k_features
+            tmp_collected_data = {name: value for name, value in zip(self.feature_names, k_features)}
+            rw = self.compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['rtt'])
             rws.append(rw)
             binary_rw = 0 if rw <= self.curr_reward else 1
             binary_rws.append(binary_rw)
@@ -214,7 +231,7 @@ class MabEnvironment(gym.Env):
         reward = np.mean(rws)
         self.curr_reward = reward # current reward
         self.curr_state = self.features
-        return (self.curr_state, action, rws, binary_rws)
+        return (self.curr_state, rws, binary_rws)
 
     
     def compute_reward(self, thr: float, loss_rate: float, rtt: float):
@@ -256,9 +273,9 @@ class MabEnvironment(gym.Env):
                 "features": self.features, 
                 'obs': observation}
 
-        print(f'\nStep: {self.step_counter} \t 
-              Sent Action: {action} \t 
-              Received Action: {observed_action} \t 
+        print(f'\nStep: {self.step_counter} \t \
+              Sent Action: {action} \t  \
+              Received Action: {observed_action} \t \
               Epoch: {self.epoch} | Reward: {avg_reward} ({np.mean(avg_binary_reward)})  | Data Size: {observation.shape[0]}')
 
         counter = self.step_counter if self.step_counter != 0 else self.steps_per_episode

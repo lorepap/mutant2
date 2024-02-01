@@ -1,6 +1,7 @@
 import os
 import yaml
 import time
+import numpy as np
 
 from collection.kernel_comm import CollectionCommManager
 from comm.kernel_thread import KernelRequest
@@ -50,6 +51,7 @@ class Collector():
 
         self.num_fields_kernel = config['num_fields_kernel']
         self.initiated = False
+        self.prev_delivered = None
         self._init_communication()
 
     def setup_communication(self):
@@ -121,35 +123,46 @@ class Collector():
         collected_data = {}
         start = time.time()
         self.set_protocol() # Communicate with kernel to set the protocol
-        # reward_base = (thr - self.zeta * loss_rate) / rtt # rtt should never be 0 since min_rtt is set to be > 0
-        # reward = pow(abs(reward_base), self.kappa)  # Adjust abs() if you want to consider the absolute value
+        print(f"Running {self.protocol} for {self.running_time} seconds...")
+                
         while time.time()-start < self.running_time:
             data = self._read_data()
             collected_data = {
             'now': data[0],
             'cwnd': data[1],
             'rtt': data[2],
-            'rtt_dev': data[3],
-            'rtt_min': data[4], 
-            'MSS': data[5],     
-            'delivered': data[6],
-            'lost': data[7],
-            'in_flight': data[8],
-            'retransmitted': data[9],
-            'selected_proto_id': data[10],
+            'srtt': data[3],
+            'rtt_dev': data[4],
+            'rtt_min': data[5], 
+            'MSS': data[6],     
+            'delivered': data[7],
+            'lost': data[8],
+            'in_flight': data[9],
+            'retransmitted': data[10],
             'thruput': data[11]*1e-6, # bps -> Mbps
-            'loss_rate': 0 if (data[7] + data[6]) == 0 else data[7] / (data[7] + data[6]),
+            'delivery_rate': data[12],
+            'prev_proto_id': data[13],
             }
+
+            self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
+            delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
+            self.prev_delivered = collected_data['delivered']
+            collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
             
             reward = pow(abs(collected_data['thruput'] - config['reward']['zeta'] * collected_data['loss_rate'] / collected_data['rtt']), config['reward']['kappa'])
             collected_data['reward'] = reward
             
-            print('\n')
-            print('Reward:', reward)
-            print('\n')
+            # print('\n')
+            # print('Reward:', reward)
+            # print('\n')
             
-            print("-- Collected Data --")
-            print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
+            # print("-- Collected Data --")
+            # print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
 
             # Save collected data to csv file
-            self.write_data(collected_data, path_to_file) 
+            self.write_data(collected_data, path_to_file)
+        print(f"Collection of {self.protocol} completed.")
+        print(f"Avg thr: {round(np.mean(collected_data['thruput']), 2)} Mbps, \
+              Avg loss rate: {round(np.mean(collected_data['loss_rate']), 2)}, \
+              Avg RTT: {round(np.mean(collected_data['rtt']), 2)} ms, \
+              Avg reward: {round(np.mean(collected_data['reward']), 2)}")

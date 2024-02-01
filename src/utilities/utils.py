@@ -118,7 +118,7 @@ def get_private_ip():
     
     # Search the output for the private IP address using a regular expression
     # pattern = r'inet (192(?:\.\d{1,3}){2}\.\d{1,3})'
-    pattern = r'inet (?:addr:)?(10(?:\.\d{1,3}){3})'
+    pattern = r'inet (?:addr:)?(10\.0\.2\.15)'
     match = re.search(pattern, output)
 
     if match:
