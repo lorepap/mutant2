@@ -5,14 +5,15 @@ all_features:
   - srtt
   - rtt_dev
   - rtt_min
-  - MSS
+  - mss
   - delivered
   - lost
   - in_flight
   - retransmitted
-  - thruput
   - delivery_rate
   - prev_proto_id
+  - crt_proto_id
+  - thruput
   - loss_rate
 
 # TODO: add rtt_rate
@@ -21,6 +22,7 @@ train_stat_features:
   - rtt_dev
   - lost
   - in_flight
+  - thruput
 
 # replace delivery rate with its max
 train_non_stat_features:
@@ -43,8 +45,8 @@ steps_per_episode: 100
 lr: 1e-3
 step_wait_seconds: 1
 
-num_actions: 5
-min_rtt: 10 # ms
+num_actions: 11
+min_rtt: 20 # ms
 bw: 12 # Mbps
 bdp_mult: 1
 

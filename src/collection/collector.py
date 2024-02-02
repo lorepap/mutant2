@@ -120,47 +120,40 @@ class Collector():
             with open(path_to_file, 'w'):
                 pass
 
+        data_dict = {}
         collected_data = {}
+        feature_names = config['all_features']
+        collected_data = {feature: [] for feature in feature_names}
+        collected_data['reward'] = []
         start = time.time()
         self.set_protocol() # Communicate with kernel to set the protocol
         print(f"Running {self.protocol} for {self.running_time} seconds...")
-                
+
         while time.time()-start < self.running_time:
             data = self._read_data()
-            collected_data = {
-            'now': data[0],
-            'cwnd': data[1],
-            'rtt': data[2],
-            'srtt': data[3],
-            'rtt_dev': data[4],
-            'rtt_min': data[5], 
-            'MSS': data[6],     
-            'delivered': data[7],
-            'lost': data[8],
-            'in_flight': data[9],
-            'retransmitted': data[10],
-            'thruput': data[11]*1e-6, # bps -> Mbps
-            'delivery_rate': data[12],
-            'prev_proto_id': data[13],
-            }
+            data_dict = {feature: data[i] for i, feature in enumerate(feature_names)}
+            data_dict['loss_rate'] = data_dict['loss_rate'] / 100
+            data_dict['thruput'] = data_dict['thruput'] / 1e6 # Convert to Mbps
 
-            self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
-            delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
-            self.prev_delivered = collected_data['delivered']
-            collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
-            
-            reward = pow(abs(collected_data['thruput'] - config['reward']['zeta'] * collected_data['loss_rate'] / collected_data['rtt']), config['reward']['kappa'])
-            collected_data['reward'] = reward
+            for feature in feature_names:
+                collected_data[feature].append(data_dict[feature])
+
+            reward = pow(abs(data_dict['thruput'] - config['reward']['zeta'] * data_dict['loss_rate'] / data_dict['srtt']), config['reward']['kappa'])
+            collected_data['reward'].append(reward)
             
             # print('\n')
             # print('Reward:', reward)
             # print('\n')
+
+            if data_dict['thruput'] > self.bw*2:
+                print('timestamp:', data_dict['now'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'], 'Reward:', reward)
             
             # print("-- Collected Data --")
             # print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
 
             # Save collected data to csv file
-            self.write_data(collected_data, path_to_file)
+            # self.write_data(collected_data, path_to_file)
+        
         print(f"Collection of {self.protocol} completed.")
         print(f"Avg thr: {round(np.mean(collected_data['thruput']), 2)} Mbps, \
               Avg loss rate: {round(np.mean(collected_data['loss_rate']), 2)}, \

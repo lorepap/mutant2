@@ -5,14 +5,13 @@ from typing import Any
 
 import numpy as np
 from utilities import context, utils
-from utilities.callbacks import TrainingCallback
+from utilities.callbacks import TrainingCallback, ModelCheckpoint
 from keras.optimizers import Adam
 from mab.mabagent import MabAgent
 from mab.environment import MabEnvironment
 from comm.comm import CommManager
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.keras.callbacks import ModelCheckpoint
 from mab.moderator import Moderator
 import yaml
 
@@ -49,7 +48,7 @@ class MabRunner():
         self.model.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.now}')
         if not checkpoint_filepath:
             self.checkpoint_filepath = os.path.join(
-                context.entry_dir, f'{self.model_path}.{self.model.get_model_name()}.h5')
+                context.entry_dir, 'log', 'mab', 'checkpoint', f'{self.model_path}.{self.model.get_model_name()}')
 
         self.environment = MabEnvironment(self.cm, self.moderator, config)
         self.training_steps = config['train_episodes'] * self.steps_per_episode
@@ -78,9 +77,7 @@ class MabRunner():
         now = self.now
 
         checkpoint_callback = ModelCheckpoint(
-            filepath=self.checkpoint_filepath,
-            save_best_only=False,
-            verbose=1
+            filepath=self.checkpoint_filepath
         )
 
         cb: TrainingCallback = TrainingCallback(
@@ -95,7 +92,7 @@ class MabRunner():
 
         self.model.compile()
         self.train_res = self.model.fit(self.environment, nb_steps=self.training_steps, 
-                    callbacks=[cb, checkpoint_callback],
+                    callbacks=[cb],
             visualize=False, verbose=2)
 
         self.training_time = time.time() - start

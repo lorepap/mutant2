@@ -22,6 +22,6 @@ if __name__ == '__main__':
     parser.add_argument("--time", type=float, default=10, help="Experiment running time (s)")
     parser.add_argument("--rtt", type=float, default=20, help="RTT (ms)")
     parser.add_argument("--bw", type=float, default=12, help="Bandwidth (Mbps)")
-    parser.add_argument("--bdp_mult", type=float, default=100, help="BDP multiplier")
+    parser.add_argument("--bdp_mult", type=float, default=1, help="BDP multiplier")
     args = parser.parse_args()
     run(args)

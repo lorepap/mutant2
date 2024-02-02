@@ -25,9 +25,9 @@ class FeatureExtractor:
             for feature in self.feature_names:
                 feature_data = self.features[window_size]['win'][feature]
                 if feature_data:
-                    self.features[window_size]['min'][feature] = min(feature_data)
-                    self.features[window_size]['max'][feature] = max(feature_data)
-                    self.features[window_size]['avg'][feature] = statistics.mean(feature_data)
+                    self.features[window_size]['min'][feature] = round(min(feature_data), 5)
+                    self.features[window_size]['max'][feature] = round(max(feature_data), 5)
+                    self.features[window_size]['avg'][feature] = round(statistics.mean(feature_data), 5)
 
     def get_statistics(self):
         return self.features

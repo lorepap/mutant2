@@ -17,7 +17,8 @@ static u32 socketId = -1;
 static u32 selected_proto_id = CUBIC;
 static u32 prev_proto_id = CUBIC;
 static bool switching_flag = false;
-static u32 prev_delivered = -1;
+static u32 prev_delivered = 0;
+// static u32 prev_lost = 0;
 u32 delivered_diff;
 u64 loss_rate;
 
@@ -210,7 +211,7 @@ static void receive_msg(struct sk_buff *skb)
             switching_flag = true;
             prev_proto_id = selected_proto_id;
             selected_proto_id = nlh->nlmsg_seq; 
-            printk("%s: received switching signal (id: %d->%d)", __FUNCTION__, prev_proto_id, selected_proto_id);
+            // printk("%s: received switching signal (id: %d->%d)", __FUNCTION__, prev_proto_id, selected_proto_id);
         }
         break;
     default: // testing
@@ -326,7 +327,7 @@ static void save_state(struct sock *sk) {
         pr_err("saved_states not initialized\n");
         return;
     }
-    printk("Saving state of %d", prev_proto_id);
+    // printk("Saving state of %d", prev_proto_id);
     // Save state of the current congestion control protocol
     switch (prev_proto_id)
     {
@@ -510,11 +511,11 @@ static void load_state(struct sock *sk){
     {
     case CUBIC:
         if (saved_states->cubic_state) {
-            printk("%s: Loading Cubic state.", __FUNCTION__);
+            // printk("%s: Loading Cubic state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->cubic_state, sizeof(struct bictcp));
         }
         else{
-            printk("%s: Initializing Cubic state", __FUNCTION__);
+            // printk("%s: Initializing Cubic state", __FUNCTION__);
             saved_states->cubic_state = kmalloc(sizeof(struct bictcp), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->cubic_state, sizeof(struct bictcp));
             cubic->init(sk);
@@ -523,7 +524,7 @@ static void load_state(struct sock *sk){
         break;
     case HYBLA:
         if (saved_states->hybla_state) {
-            printk("%s: Loading Hybla state.", __FUNCTION__);
+            // printk("%s: Loading Hybla state.", __FUNCTION__);
             // printk("%s: printing saved_states->hybla_state", __FUNCTION__);
             // print_hybla(saved_states->hybla_state);
             memcpy(inet_csk_ca(sk), saved_states->hybla_state, sizeof(struct hybla));
@@ -531,7 +532,7 @@ static void load_state(struct sock *sk){
             // print_hybla(inet_csk_ca(sk));
         }
         else{
-            printk("%s: Initializing Hybla state", __FUNCTION__);
+            // printk("%s: Initializing Hybla state", __FUNCTION__);
             saved_states->hybla_state = kmalloc(sizeof(struct hybla), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->hybla_state, sizeof(struct hybla));
             hybla->init(sk);
@@ -540,11 +541,11 @@ static void load_state(struct sock *sk){
         break;
      case BBR:
         if (saved_states->bbr_state) {
-            printk("%s: Loading BBR state.", __FUNCTION__);
+            // printk("%s: Loading BBR state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->bbr_state, sizeof(struct bbr));
         }
         else{
-            printk("%s: Initializing BBR state", __FUNCTION__);
+            // printk("%s: Initializing BBR state", __FUNCTION__);
             saved_states->bbr_state = kmalloc(sizeof(struct bbr), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->bbr_state, sizeof(struct bbr));
             bbr->init(sk);
@@ -553,11 +554,11 @@ static void load_state(struct sock *sk){
         break;
     case WESTWOOD:
         if (saved_states->westwood_state) {
-            printk("%s: Loading Westwood state.", __FUNCTION__);
+            // printk("%s: Loading Westwood state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->westwood_state, sizeof(struct westwood));
         }
         else{
-            printk("%s: Initializing Westwood state", __FUNCTION__);
+            // printk("%s: Initializing Westwood state", __FUNCTION__);
             saved_states->westwood_state = kmalloc(sizeof(struct westwood), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->westwood_state, sizeof(struct westwood));
             westwood->init(sk);
@@ -566,11 +567,11 @@ static void load_state(struct sock *sk){
         break;
     case VENO:
         if (saved_states->veno_state) {
-            printk("%s: Loading Veno state.", __FUNCTION__);
+            // printk("%s: Loading Veno state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->veno_state, sizeof(struct veno));
         }
         else{
-            printk("%s: Initializing Veno state", __FUNCTION__);
+            // printk("%s: Initializing Veno state", __FUNCTION__);
             saved_states->veno_state = kmalloc(sizeof(struct veno), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->veno_state, sizeof(struct veno));
             veno->init(sk);
@@ -579,11 +580,11 @@ static void load_state(struct sock *sk){
         break;
     case VEGAS:
         if (saved_states->vegas_state) {
-            printk("%s: Loading Vegas state.", __FUNCTION__);
+            // printk("%s: Loading Vegas state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->vegas_state, sizeof(struct vegas));
         }
         else{
-            printk("%s: Initializing Vegas state", __FUNCTION__);
+            // printk("%s: Initializing Vegas state", __FUNCTION__);
             saved_states->vegas_state = kmalloc(sizeof(struct vegas), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->vegas_state, sizeof(struct vegas));
             vegas->init(sk);
@@ -592,11 +593,11 @@ static void load_state(struct sock *sk){
         break;
     case YEAH:
         if (saved_states->yeah_state) {
-            printk("%s: Loading Yeah state.", __FUNCTION__);
+            // printk("%s: Loading Yeah state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->yeah_state, sizeof(struct yeah));
         }
         else{
-            printk("%s: Initializing Yeah state", __FUNCTION__);
+            // printk("%s: Initializing Yeah state", __FUNCTION__);
             saved_states->yeah_state = kmalloc(sizeof(struct yeah), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->yeah_state, sizeof(struct yeah));
             yeah->init(sk);
@@ -605,11 +606,11 @@ static void load_state(struct sock *sk){
         break;
     case CDG:
         if (saved_states->cdg_state) {
-            printk("%s: Loading CDG state.", __FUNCTION__);
+            // printk("%s: Loading CDG state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->cdg_state, sizeof(struct cdg));
         }
         else{
-            printk("%s: Initializing CDG state", __FUNCTION__);
+            // printk("%s: Initializing CDG state", __FUNCTION__);
             saved_states->cdg_state = kmalloc(sizeof(struct cdg), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->cdg_state, sizeof(struct cdg));
             cdg->init(sk);
@@ -618,11 +619,11 @@ static void load_state(struct sock *sk){
         break;
     case BIC:
         if (saved_states->bic_state) {
-            printk("%s: Loading BIC state.", __FUNCTION__);
+            // printk("%s: Loading BIC state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->bic_state, sizeof(struct bic));
         }
         else{
-            printk("%s: Initializing BIC state", __FUNCTION__);
+            // printk("%s: Initializing BIC state", __FUNCTION__);
             saved_states->bic_state = kmalloc(sizeof(struct bic), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->bic_state, sizeof(struct bic));
             tcp_bic->init(sk);
@@ -631,11 +632,11 @@ static void load_state(struct sock *sk){
         break;
     case HTCP:
         if (saved_states->htcp_state) {
-            printk("%s: Loading HTCP state.", __FUNCTION__);
+            // printk("%s: Loading HTCP state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->htcp_state, sizeof(struct htcp));
         }
         else{
-            printk("%s: Initializing HTCP state", __FUNCTION__);
+            // printk("%s: Initializing HTCP state", __FUNCTION__);
             saved_states->htcp_state = kmalloc(sizeof(struct htcp), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->htcp_state, sizeof(struct htcp));
             tcp_htcp->init(sk);
@@ -644,11 +645,11 @@ static void load_state(struct sock *sk){
         break;
     case HIGHSPEED:
         if (saved_states->highspeed_state) {
-            printk("%s: Loading Highspeed state.", __FUNCTION__);
+            // printk("%s: Loading Highspeed state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->highspeed_state, sizeof(struct hstcp));
         }
         else{
-            printk("%s: Initializing Highspeed state", __FUNCTION__);
+            // printk("%s: Initializing Highspeed state", __FUNCTION__);
             saved_states->highspeed_state = kmalloc(sizeof(struct hstcp), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->highspeed_state, sizeof(struct hstcp));
             highspeed->init(sk);
@@ -657,11 +658,11 @@ static void load_state(struct sock *sk){
         break;
     case ILLINOIS:
         if (saved_states->illinois_state) {
-            printk("%s: Loading Illinois state.", __FUNCTION__);
+            // printk("%s: Loading Illinois state.", __FUNCTION__);
             memcpy(inet_csk_ca(sk), saved_states->illinois_state, sizeof(struct illinois));
         }
         else{
-            printk("%s: Initializing Illinois state", __FUNCTION__);
+            // printk("%s: Initializing Illinois state", __FUNCTION__);
             saved_states->illinois_state = kmalloc(sizeof(struct illinois), GFP_KERNEL);
             memcpy(inet_csk_ca(sk), saved_states->illinois_state, sizeof(struct illinois));
             illinois->init(sk);
@@ -679,55 +680,55 @@ void mutant_switch_congestion_control(void) {
     switch (selected_proto_id)
     {
     case CUBIC:
-        printk(KERN_INFO "Switching to Cubic (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Cubic (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &cubictcp;
         break;
     case HYBLA:
-        printk(KERN_INFO "Switching to Hybla (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Hybla (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_hybla;
         break;
     case BBR:
-        printk(KERN_INFO "Switching to BBR (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to BBR (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_bbr_cong_ops;
         break;
     case WESTWOOD:
-        printk(KERN_INFO "Switching to Westwood (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Westwood (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_westwood;
         break;
     case VENO:
-        printk(KERN_INFO "Switching to Veno (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Veno (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_veno;
         break;
     case VEGAS:
-        printk(KERN_INFO "Switching to Vegas (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Vegas (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_vegas;
         break;
     case YEAH:
-        printk(KERN_INFO "Switching to Yeah (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Yeah (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_yeah;
         break;
     case CDG:
-        printk(KERN_INFO "Switching to CDG (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to CDG (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_cdg;
         break;
     case BIC:
-        printk(KERN_INFO "Switching to BIC (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to BIC (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &bic;
         break;
     case HTCP:
-        printk(KERN_INFO "Switching to HTCP (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to HTCP (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &htcp;
         break;
     case HIGHSPEED:
-        printk(KERN_INFO "Switching to Highspeed (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Highspeed (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_highspeed;
         break;
     case ILLINOIS:
-        printk(KERN_INFO "Switching to Illinois (ID: %d)", selected_proto_id);
+        // printk(KERN_INFO "Switching to Illinois (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_illinois;
         break;
     default:
-        printk(KERN_INFO "Switching to default (Cubic)");
+        // printk(KERN_INFO "Switching to default (Cubic)");
         mutant_wrapper.current_ops = &cubictcp;
         break;
     }
@@ -738,42 +739,50 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
 {
     // message vars
     char message[MAX_PAYLOAD - 1];
+    u64 thruput;
+    u64 loss_rate = 0.0;
 
-    // Feature names and values
-    char* feature_names[] = {"now", "cwnd", "rtt", "srtt", "rtt_dev", "rtt_min", "mss",
-                             "delivered", "lost", "in_flight", "retransmitted",
-                             "rate", "prev_proto_id"};
+    if (tp->packets_out + tp->retrans_out > 0) 
+        loss_rate = ((u64) tp->lost_out * 100) / (tp->packets_out + tp->retrans_out);
 
-    // Calculate thruput and loss_rate
-    u32 delivered_diff = tp->delivered - prev_delivered;
-    u64 loss_rate = (delivered_diff > 0) ? (u64)tp->lost_out / (delivered_diff + tp->lost_out) : 0;
-
+    if (tp->lost_out > 0)
+        // printk("Mutant %s: delivered: %u, lost_out: %u, packets_out: %u, retrans_out: %u, loss_rate: %llu", __FUNCTION__, tp->delivered, tp->lost_out, tp->packets_out, tp->retrans_out, loss_rate);
     u32 rate = READ_ONCE(tp->rate_delivered);
     u32 intv = READ_ONCE(tp->rate_interval_us);
-    u64 thruput = (rate && intv) ? do_div(thruput, intv) : 0;
     
-    // if (rate && intv) {
-    //     thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8;
-    //     do_div(thruput, tp->rate_interval_us);
-    // }
+    if (rate && intv) {
+        thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8; // USEC_PER_SEC=1e6; 8 to convert to bits (MSS is in bytes); throughput is in bps
+        do_div(thruput, tp->rate_interval_us);
+    }
 
-    u32 feature_values[] = {tcp_jiffies32, tp->snd_cwnd, tp->rack.rtt_us, tp->srtt_us, tp->mdev_us,
-                            tcp_min_rtt(tp), tp->advmss, tp->delivered, tp->lost_out,
-                            tp->packets_out, tp->retrans_out, READ_ONCE(tp->rate_delivered), prev_proto_id};  // Placeholder for thruput and loss_rate
+    u32 feature_values[] = {tcp_jiffies32, 
+                            tp->snd_cwnd, 
+                            tp->rack.rtt_us, 
+                            tp->srtt_us, 
+                            tp->mdev_us,
+                            tcp_min_rtt(tp), 
+                            tp->advmss, 
+                            tp->delivered, 
+                            tp->lost_out,
+                            tp->packets_out, 
+                            tp->retrans_out, 
+                            READ_ONCE(tp->rate_delivered), 
+                            prev_proto_id, 
+                            selected_proto_id,
+                            thruput,
+                            loss_rate
+                            };
 
     // Construct the message
     char formatted_message[MAX_PAYLOAD - 1];
     int offset = 0;
     int i;
-    for (i = 0; i < sizeof(feature_names) / sizeof(feature_names[0]); ++i) {
+    for (i = 0; i < sizeof(feature_values) / sizeof(feature_values[0]); ++i) {
         offset += snprintf(formatted_message + offset, MAX_PAYLOAD - 1 - offset,
-                           "%s;%u;", feature_names[i], feature_values[i]);
+                           "%u;", feature_values[i]);
     }
 
-    // Add thruput and loss_rate to the message within the loop
-    offset += snprintf(formatted_message + offset, MAX_PAYLOAD - 1 - offset, "thruput;%llu;loss_rate;%llu", thruput, loss_rate);
-
-    // Send the formatted message
+    // Send feature values
     send_msg(formatted_message, socketId);
 }
 
@@ -890,7 +899,7 @@ static void mutant_tcp_pkts_acked(struct sock *sk, const struct ack_sample *samp
     send_net_params(tp, sk, socketId);
     // Switching operation
     if (switching_flag) {
-        printk("%s: Switching flag ON", __FUNCTION__);
+        // printk("%s: Switching flag ON", __FUNCTION__);
         save_state(sk);
         mutant_switch_congestion_control();
         load_state(sk);

@@ -94,7 +94,7 @@ class MabAgent(Agent):
         # np.random.seed(self.counter)
 
         N = len(self.actions)
-
+        print("[DEBUG] N: ", N)
         self.model.partial_fit(
             self.recent_observation['obs'],
             np.array(self.actions),

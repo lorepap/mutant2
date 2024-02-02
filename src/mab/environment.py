@@ -30,7 +30,7 @@ class MabEnvironment(gym.Env):
 
         # self.moderator = moderator
         self.config = config
-        self.width_state = len(config['all_features'])
+        self.width_state = 41
         self.height_state = config['window_len']
 
         # Kernel state
@@ -125,13 +125,12 @@ class MabEnvironment(gym.Env):
         
         # Read kernel features
         data = self._read_data()
-        # Iterate through the list in pairs (name, value)
-        for i in range(0, len(data), 2):
-            feature_name = data[i]
-            feature_value = data[i + 1]
-            # Add the key-value pair to the dictionary
-            collected_data[feature_name] = feature_value
+        collected_data = {feature: data[i] for i, feature in enumerate(self.feature_names)}
+        collected_data['thruput'] *= 1e-6  # bps -> Mbps
+        collected_data['loss_rate'] *= 0.01  # percentage -> ratio
 
+        # print the collected data
+        print(f'Collected data: {collected_data}')
 
         # Compute the last delivery (bytes) and the loss rate
         # self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
@@ -157,7 +156,7 @@ class MabEnvironment(gym.Env):
         # Store the kernel feature to append to the state
         curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
                                 feat_averages, feat_min, feat_max))
-
+        # curr_kernel_features = np.array([val for feat, val in collected_data.items() if feat in self.features])
         curr_timestamp = collected_data['now']
         num_msg = 1
         start = time.time()
@@ -168,23 +167,14 @@ class MabEnvironment(gym.Env):
             _feat_averages = []
             _feat_min = []
             _feat_max = []
+            collected_data = {}
 
             # Read kernel features
             data = self._read_data()
-            # Iterate through the list in pairs (name, value)
-            for i in range(0, len(data), 2):
-                feature_name = data[i]
-                feature_value = data[i + 1]
-                # Add the key-value pair to the dictionary
-                collected_data[feature_name] = feature_value
-            # collected_data = {name: value for name, value in zip(self.feature_names, data)}
-
-            # Compute the last delivery (bytes) and the loss rate
-            # self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
-            # delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
-            # self.prev_delivered = collected_data['delivered']
-            # collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
-
+            collected_data = {feature: data[i] for i, feature in enumerate(self.feature_names)}
+            collected_data['thruput'] *= 1e-6  # bps -> Mbps            # collected_data = {name: value for name, value in zip(self.feature_names, data)}
+            collected_data['loss_rate'] *= 0.01  # percentage -> ratio
+            
             # Compute statistics for the features
             self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
             self.feat_extractor.compute_statistics()
@@ -215,6 +205,8 @@ class MabEnvironment(gym.Env):
                 curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
                                 feat_averages, feat_min, feat_max))
                 
+                # curr_kernel_features = np.array([val for feat, val in collected_data.items() if feat in self.features])
+
                 curr_timestamp = collected_data['now']
 
                 num_msg = 1
@@ -227,7 +219,6 @@ class MabEnvironment(gym.Env):
                             np.concatenate((
                                 [val for feat, val in collected_data.items() if feat in self.non_stat_features], 
                                 feat_averages, feat_min, feat_max)))
-
                 num_msg += 1
 
         # Kernel features for callbacks
@@ -238,7 +229,7 @@ class MabEnvironment(gym.Env):
             # Extract individual features
             # cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr = k_features
             tmp_collected_data = {name: value for name, value in zip(self.feature_names, k_features)}
-            rw = self.compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['rtt'])
+            rw = self.compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['srtt'])
             rws.append(rw)
             binary_rw = 0 if rw <= self.curr_reward else 1
             binary_rws.append(binary_rw)
@@ -248,7 +239,7 @@ class MabEnvironment(gym.Env):
         reward = np.mean(rws)
         self.curr_reward = reward # current reward
         self.curr_state = self.features
-        return (self.curr_state, rws, binary_rws)
+        return (self.curr_state, collected_data['crt_proto_id'], rws, binary_rws)
 
     
     def compute_reward(self, thr: float, loss_rate: float, rtt: float):
@@ -276,7 +267,7 @@ class MabEnvironment(gym.Env):
 
     def step(self, action):
         self._change_cca(int(action))
-        observation, observed_action, rewards, binary_rewards = self._get_state()
+        observation, action, rewards, binary_rewards = self._get_state()
 
         done = False if self.step_counter != self.steps_per_episode-1 else True
         self.step_counter = (self.step_counter+1) % self.steps_per_episode
@@ -285,14 +276,12 @@ class MabEnvironment(gym.Env):
         avg_binary_reward = np.bincount(binary_rewards).argmax()
 
         info = {'avg_reward': avg_reward}
-        data = {'binary_rewards': binary_rewards, 
-                'rewards': rewards, 
+        data = {'rewards': binary_rewards, 
                 "features": self.features, 
                 'obs': observation}
 
         print(f'\nStep: {self.step_counter} \t \
               Sent Action: {action} \t  \
-              Received Action: {observed_action} \t \
               Epoch: {self.epoch} | Reward: {avg_reward} ({np.mean(avg_binary_reward)})  | Data Size: {observation.shape[0]}')
 
         counter = self.step_counter if self.step_counter != 0 else self.steps_per_episode
@@ -303,7 +292,7 @@ class MabEnvironment(gym.Env):
 
         if self.allow_save:
             self.record(obs_mean, avg_binary_reward,
-                        step, observed_action)
+                        step, action)
 
         # if not self.moderator.can_start() and step > 1:
         #     done = True
@@ -313,7 +302,7 @@ class MabEnvironment(gym.Env):
     def reset(self):
         self._init_communication()
         self._change_cca(0)
-        observation, _, _ = self._get_state()
+        observation, _, _, _ = self._get_state()
 
         self.epoch += 1
 
