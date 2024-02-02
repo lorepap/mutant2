@@ -30,7 +30,7 @@ class MabEnvironment(gym.Env):
 
         # self.moderator = moderator
         self.config = config
-        self.width_state = config['num_features'] # state dimension
+        self.width_state = len(config['all_features'])
         self.height_state = config['window_len']
 
         # Kernel state
@@ -65,14 +65,13 @@ class MabEnvironment(gym.Env):
         self.kappa = config['reward']['kappa']
         self.mss = None
         self.max_bw = 0.0
-        self.num_features_tmp = self.width_state + 2 # all features to be normalized (this is not the state dimension)
-        # self.normalizer = Normalizer(self.num_features_tmp)
+        self.num_features_tmp = self.width_state
         self.cwnd = []
 
         # Feature extractor
-        self.prev_delivered = None
-        self.feature_names = self.config['features'] # List of features
-        self.stat_features= self.config['stat_features']
+        self.feature_names = self.config['all_features'] # List of features
+        self.stat_features= self.config['train_stat_features']
+        self.non_stat_features = self.config['train_non_stat_features']
         self.window_sizes = self.config['window_sizes']
         self.feat_extractor = FeatureExtractor(self.stat_features) # window_sizes=(10, 200, 1000)
 
@@ -113,46 +112,50 @@ class MabEnvironment(gym.Env):
         s_tmp = np.array([])
         # state_n = np.array([])
         state = np.array([])
-        feat_averages = []
-        feat_min = []
-        feat_max = []
+        _feat_averages = []
+        _feat_min = []
+        _feat_max = []
         received_jiffies = 0
 
         # Callbacks data
         self.features = []
         rws = []
         binary_rws = []
+        collected_data = {}
         
         # Read kernel features
         data = self._read_data()
-        collected_data = {name: value for name, value in zip(self.feature_names, data)}
+        # Iterate through the list in pairs (name, value)
+        for i in range(0, len(data), 2):
+            feature_name = data[i]
+            feature_value = data[i + 1]
+            # Add the key-value pair to the dictionary
+            collected_data[feature_name] = feature_value
+
 
         # Compute the last delivery (bytes) and the loss rate
-        self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
-        delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
-        self.prev_delivered = collected_data['delivered']
-        collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
+        # self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
+        # delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
+        # self.prev_delivered = collected_data['delivered']
+        # collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
 
         # Compute statistics for the features
-        # features_to_update = [collected_data['rtt'], collected_data['rtt_dev'], collected_data['lost'], collected_data['in_flight'], collected_data['thruput']]
-
         self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
         self.feat_extractor.compute_statistics()
         feat_statistics = self.feat_extractor.get_statistics()
     
         for size in self.window_sizes:
             for feature in self.stat_features:
-                feat_averages.append(feat_statistics[size]['avg'][feature])
-                feat_min.append(feat_statistics[size]['min'][feature])
-                feat_max.append(feat_statistics[size]['max'][feature])
+                _feat_averages.append(feat_statistics[size]['avg'][feature])
+                _feat_min.append(feat_statistics[size]['min'][feature])
+                _feat_max.append(feat_statistics[size]['max'][feature])
 
-        feat_averages = np.array(feat_averages)
-        feat_min = np.array(feat_min)
-        feat_max = np.array(feat_max)
+        feat_averages = np.array(_feat_averages)
+        feat_min = np.array(_feat_min)
+        feat_max = np.array(_feat_max)
 
         # Store the kernel feature to append to the state
-        curr_kernel_features = np.concatenate(([collected_data['rtt'], collected_data['rtt_dev'],
-                                collected_data['lost'], collected_data['in_flight'], collected_data['thruput']], 
+        curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
                                 feat_averages, feat_min, feat_max))
 
         curr_timestamp = collected_data['now']
@@ -161,46 +164,56 @@ class MabEnvironment(gym.Env):
 
         # Read and record data for step_wait seconds
         while float(time.time() - start) <= float(self.step_wait):
+            # Empty the stats
+            _feat_averages = []
+            _feat_min = []
+            _feat_max = []
 
+            # Read kernel features
             data = self._read_data()
-            collected_data = {name: value for name, value in zip(self.feature_names, data)}
+            # Iterate through the list in pairs (name, value)
+            for i in range(0, len(data), 2):
+                feature_name = data[i]
+                feature_value = data[i + 1]
+                # Add the key-value pair to the dictionary
+                collected_data[feature_name] = feature_value
+            # collected_data = {name: value for name, value in zip(self.feature_names, data)}
 
-            self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
-            delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
-            self.prev_delivered = collected_data['delivered']
-            collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
-            
-            reward = pow(abs(collected_data['thruput'] - self.config['reward']['zeta'] * collected_data['loss_rate'] / collected_data['rtt']), self.config['reward']['kappa'])
-            collected_data['reward'] = reward
+            # Compute the last delivery (bytes) and the loss rate
+            # self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
+            # delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
+            # self.prev_delivered = collected_data['delivered']
+            # collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
 
-            features_to_update = [collected_data['rtt'], collected_data['rtt_dev'], collected_data['lost'], collected_data['in_flight'], collected_data['thruput']]
-            self.feat_extractor.update(features_to_update)
+            # Compute statistics for the features
+            self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
             self.feat_extractor.compute_statistics()
+            feat_statistics = self.feat_extractor.get_statistics()
+        
             for size in self.window_sizes:
-                for feature in self.features:
-                    feat_averages.append(feat_statistics[size]['avg'][feature])
-                    feat_min.append(feat_statistics[size]['min'][feature])
-                    feat_max.append(feat_statistics[size]['max'][feature])
+                for feature in self.stat_features:
+                    _feat_averages.append(feat_statistics[size]['avg'][feature])
+                    _feat_min.append(feat_statistics[size]['min'][feature])
+                    _feat_max.append(feat_statistics[size]['max'][feature])
 
-            feat_averages = np.array(feat_averages)
-            feat_min = np.array(feat_min)
-            feat_max = np.array(feat_max)
+            feat_averages = np.array(_feat_averages)
+            feat_min = np.array(_feat_min)
+            feat_max = np.array(_feat_max)
 
             if collected_data['now'] != curr_timestamp:
                 curr_kernel_features = np.divide(curr_kernel_features, num_msg)
 
                 if s_tmp.shape[0] == 0:
                     s_tmp = np.array(curr_kernel_features).reshape(
-                        1, self.num_features_tmp)
+                        1, -1)
                 else:
                     s_tmp = np.vstack(
-                        (s_tmp, np.array(curr_kernel_features).reshape(1, self.num_features_tmp))
+                        (s_tmp, np.array(curr_kernel_features).reshape(1, -1))
                     )
 
                 # Store the kernel feature to append to the state
-                curr_kernel_features = np.concatenate(([collected_data['rtt'], collected_data['rtt_dev'],
-                                        collected_data['lost'], collected_data['in_flight'], collected_data['thruput']], 
-                                        feat_averages, feat_min, feat_max))
+                curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
+                                feat_averages, feat_min, feat_max))
                 
                 curr_timestamp = collected_data['now']
 
@@ -211,9 +224,10 @@ class MabEnvironment(gym.Env):
             else:
                 # sum new reading to existing readings
                 curr_kernel_features = np.add(curr_kernel_features,
-                            np.concatenate(([collected_data['rtt'], collected_data['rtt_dev'],
-                                collected_data['lost'], collected_data['in_flight'], collected_data['thruput']], 
-                                feat_averages, feat_min, feat_max)))            
+                            np.concatenate((
+                                [val for feat, val in collected_data.items() if feat in self.non_stat_features], 
+                                feat_averages, feat_min, feat_max)))
+
                 num_msg += 1
 
         # Kernel features for callbacks
@@ -299,7 +313,7 @@ class MabEnvironment(gym.Env):
     def reset(self):
         self._init_communication()
         self._change_cca(0)
-        observation, _, _, _ = self._get_state()
+        observation, _, _ = self._get_state()
 
         self.epoch += 1
 

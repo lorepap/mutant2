@@ -128,5 +128,3 @@ def get_private_ip():
         # If no match is found, set the IP address to None
         ip_address = None
     return ip_address
-
-

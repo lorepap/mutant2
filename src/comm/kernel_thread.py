@@ -45,8 +45,8 @@ class KernelRequest(threading.Thread):
                         print("[KERNEL THREAD] Communication terminated")
                         break
                     else:
-                        split_data = data_decoded.split(';')[:self.num_fields_kernel]
-                        entry = list(map(int, split_data))
+                        split_data = data_decoded.split(';')
+                        entry = [int(field) if field.isdigit() or (field[1:].isdigit() and field[0] == '-') else field for field in split_data]
                         # print("[KERNEL THREAD] Data received:", entry)
                         self.queue.put(entry)
                         # print("[KERNEL THREAD] Queue contents:", list(self.queue.queue))

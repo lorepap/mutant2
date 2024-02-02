@@ -1,7 +1,40 @@
+all_features:
+  - now
+  - cwnd
+  - rtt
+  - srtt
+  - rtt_dev
+  - rtt_min
+  - MSS
+  - delivered
+  - lost
+  - in_flight
+  - retransmitted
+  - thruput
+  - delivery_rate
+  - prev_proto_id
+  - loss_rate
+
+# TODO: add rtt_rate
+train_stat_features:
+  - rtt
+  - rtt_dev
+  - lost
+  - in_flight
+
+# replace delivery rate with its max
+train_non_stat_features:
+  - srtt
+  - rtt_dev
+  - thruput
+  - delivery_rate
+  - prev_proto_id
+  - loss_rate
+
 train_episodes: 30
 test_episodes: 1
-num_features: 9
-num_fields_kernel: 13
+num_features: 42
+num_fields_kernel: 14
 window_len: 10
 
 jiffies_per_state: 5
@@ -18,29 +51,6 @@ bdp_mult: 1
 reward:
   zeta: 5
   kappa: 2
-
-features:
-  - now
-  - cwnd
-  - rtt
-  - srtt
-  - rtt_dev
-  - rtt_min
-  - MSS
-  - delivered
-  - lost
-  - in_flight
-  - retransmitted
-  - thruput
-  - delivery_rate
-  - prev_proto_id
-
-# TODO: add rtt_rate
-stat_features:
-  - rtt
-  - rtt_dev
-  - lost
-  - in_flight
 
 window_sizes:
   - 10

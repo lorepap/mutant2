@@ -11,13 +11,13 @@ class FeatureExtractor:
         for window_size in window_sizes:
             self.features[window_size]['win'] = {feature: deque(maxlen=window_size) for feature in feature_names}
             for stat in ['min', 'max', 'avg']:
-                self.features[window_size]['win'] = {feature: [] for feature in feature_names}
+                self.features[window_size][stat] = {feature: [] for feature in feature_names}
 
     def update(self, feature_values):
         # Update feature values for each window size
         for window_size in self.window_sizes:
             for feature, value in enumerate(feature_values):
-                self.features[window_size]['avg'][self.feature_names[feature]].append(value)
+                self.features[window_size]['win'][self.feature_names[feature]].append(value)
 
     def compute_statistics(self):
         # Compute min, max, and avg statistics for each feature and window size

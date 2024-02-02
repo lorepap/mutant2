@@ -17,6 +17,9 @@ static u32 socketId = -1;
 static u32 selected_proto_id = CUBIC;
 static u32 prev_proto_id = CUBIC;
 static bool switching_flag = false;
+static u32 prev_delivered = -1;
+u32 delivered_diff;
+u64 loss_rate;
 
 
 // Wrapper struct to call the tcp_congestion_ops of the selected policy
@@ -736,38 +739,94 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
     // message vars
     char message[MAX_PAYLOAD - 1];
 
-    u32 now = tcp_jiffies32;
-    u32 cwnd = tp->snd_cwnd;
-    u32 rtt = tp->rack.rtt_us;
-    u32 srtt = tp->srtt_us;
-    u32 rtt_dev = tp->mdev_us;
-	u32 rtt_min = tcp_min_rtt(tp);
-    u16 MSS = tp->advmss;
-    u32 delivered = tp->delivered;
-    u32 lost = tp->lost_out;
-    u32 in_flight = tp->packets_out;
-    u32 retransmitted = tp->retrans_out;
-    u64 thruput = 0;
+    // Feature names and values
+    char* feature_names[] = {"now", "cwnd", "rtt", "srtt", "rtt_dev", "rtt_min", "mss",
+                             "delivered", "lost", "in_flight", "retransmitted",
+                             "rate", "prev_proto_id"};
 
-    // Throughput (see tcp.c:tcp_compute_delivery_rate)
-    // USEC_PER_SEC=1e6; 8 to convert to bits (MSS is in bytes); throughput is in bps
+    // Calculate thruput and loss_rate
+    u32 delivered_diff = tp->delivered - prev_delivered;
+    u64 loss_rate = (delivered_diff > 0) ? (u64)tp->lost_out / (delivered_diff + tp->lost_out) : 0;
+
     u32 rate = READ_ONCE(tp->rate_delivered);
-	u32 intv = READ_ONCE(tp->rate_interval_us);
-    if (rate && intv) {
-        thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8;
-        // Print mss and thruput
-        // printk("Mutant %s: MSS: %u, thruput: %llu, USEC_PER_SEC: %u", __FUNCTION__, tp->mss_cache, thruput, USEC_PER_SEC);
-        do_div(thruput, tp->rate_interval_us);
+    u32 intv = READ_ONCE(tp->rate_interval_us);
+    u64 thruput = (rate && intv) ? do_div(thruput, intv) : 0;
+    
+    // if (rate && intv) {
+    //     thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8;
+    //     do_div(thruput, tp->rate_interval_us);
+    // }
+
+    u32 feature_values[] = {tcp_jiffies32, tp->snd_cwnd, tp->rack.rtt_us, tp->srtt_us, tp->mdev_us,
+                            tcp_min_rtt(tp), tp->advmss, tp->delivered, tp->lost_out,
+                            tp->packets_out, tp->retrans_out, READ_ONCE(tp->rate_delivered), prev_proto_id};  // Placeholder for thruput and loss_rate
+
+    // Construct the message
+    char formatted_message[MAX_PAYLOAD - 1];
+    int offset = 0;
+    int i;
+    for (i = 0; i < sizeof(feature_names) / sizeof(feature_names[0]); ++i) {
+        offset += snprintf(formatted_message + offset, MAX_PAYLOAD - 1 - offset,
+                           "%s;%u;", feature_names[i], feature_values[i]);
     }
 
-    snprintf(message, MAX_PAYLOAD - 1, "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%llu;%u",
-             now, cwnd, rtt, srtt, rtt_dev, rtt_min, MSS, delivered, lost,
-             in_flight, retransmitted, thruput, rate, prev_proto_id);
-    
-    // printk("Mutant %s: Sending message to user: %s", __FUNCTION__, message);
+    // Add thruput and loss_rate to the message within the loop
+    offset += snprintf(formatted_message + offset, MAX_PAYLOAD - 1 - offset, "thruput;%llu;loss_rate;%llu", thruput, loss_rate);
 
-    send_msg(message, socketId);
+    // Send the formatted message
+    send_msg(formatted_message, socketId);
 }
+
+// static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
+// {
+//     // message vars
+//     char message[MAX_PAYLOAD - 1];
+
+//     u32 now = tcp_jiffies32;
+//     u32 cwnd = tp->snd_cwnd;
+//     u32 rtt = tp->rack.rtt_us;
+//     u32 srtt = tp->srtt_us;
+//     u32 rtt_dev = tp->mdev_us;
+// 	u32 rtt_min = tcp_min_rtt(tp);
+//     u16 MSS = tp->advmss;
+//     u32 delivered = tp->delivered;
+//     u32 lost = tp->lost_out;
+//     u32 in_flight = tp->packets_out;
+//     u32 retransmitted = tp->retrans_out;
+//     u64 thruput = 0;
+
+//     if (prev_delivered < 0) {
+//         prev_delivered = delivered;
+//     }
+//     delivered_diff = delivered - prev_delivered;
+//     prev_delivered = delivered
+
+//     if (delivered_diff > 0) {
+//         loss_rate = (u64)lost / (delivered_diff + lost);
+//     }
+//     else {
+//         loss_rate = 0;
+//     }
+
+//     // Throughput (see tcp.c:tcp_compute_delivery_rate)
+//     // USEC_PER_SEC=1e6; 8 to convert to bits (MSS is in bytes); throughput is in bps
+//     u32 rate = READ_ONCE(tp->rate_delivered);
+// 	u32 intv = READ_ONCE(tp->rate_interval_us);
+//     if (rate && intv) {
+//         thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8;
+//         // Print mss and thruput
+//         // printk("Mutant %s: MSS: %u, thruput: %llu, USEC_PER_SEC: %u", __FUNCTION__, tp->mss_cache, thruput, USEC_PER_SEC);
+//         do_div(thruput, tp->rate_interval_us);
+//     }
+
+//     snprintf(message, MAX_PAYLOAD - 1, "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%llu;%u;%u",
+//              now, cwnd, rtt, srtt, rtt_dev, rtt_min, MSS, delivered, lost,
+//              in_flight, retransmitted, thruput, rate, loss_rate, prev_proto_id);
+    
+//     // printk("Mutant %s: Sending message to user: %s", __FUNCTION__, message);
+
+//     send_msg(message, socketId);
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
