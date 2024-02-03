@@ -17,7 +17,7 @@ import yaml
 
 
 class MabRunner():
-    def __init__(self, checkpoint_filepath: str = None):
+    def __init__(self, checkpoint_filepath: str = None, log=True):
 
         # running params
         with open('config/train.yml', 'r') as file:
@@ -51,6 +51,7 @@ class MabRunner():
                 context.entry_dir, 'log', 'mab', 'checkpoint', f'{self.model_path}.{self.model.get_model_name()}')
 
         self.environment = MabEnvironment(self.cm, self.moderator, config)
+        self.environment.allow_save = log
         self.training_steps = config['train_episodes'] * self.steps_per_episode
         self.now = time.time()
 
@@ -58,6 +59,7 @@ class MabRunner():
         self.history_dir = "log/mab/history"
         self.model_dir = "log/mab/model"
         self.make_paths()
+
 
     def setup_communication(self):
         # Set up iperf client-server communication
@@ -68,6 +70,8 @@ class MabRunner():
 
     def stop_communication(self):
         self.cm.stop_iperf_communication()
+        self.cm.close_kernel_communication()
+        self.environment.close()
 
     def make_paths(self):
         os.makedirs(self.history_dir, exist_ok=True)

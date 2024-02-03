@@ -202,3 +202,5 @@ pid.txt
 **/*/debug_*
 traces/
 log/iperf/*
+log/mab/model/*
+log/mab/run/*

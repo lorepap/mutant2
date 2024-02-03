@@ -13,17 +13,14 @@ from comm.netlink_communicator import NetlinkCommunicator
 import re
 
 TIME_FORMAT = '%Y.%m.%d.%H.%M.%S'
+now = datetime.now()
 
 
 def time_to_str() -> str:
-
-    return datetime.now().strftime(TIME_FORMAT)
-
+    return now.strftime(TIME_FORMAT)
 
 def str_to_time(time: str) -> datetime:
-
     return datetime.strptime(time, TIME_FORMAT)
-
 
 def parse_models_config():
     with open(os.path.join(context.entry_dir, 'config/models.yml')) as config:
@@ -33,11 +30,9 @@ def parse_reward_config():
     with open(os.path.join(context.entry_dir, 'config/rewards.yml')) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
 
-
 def parse_protocols_config():
     with open(os.path.join(context.entry_dir, 'config/protocols.yml')) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
-
 
 def parse_pantheon_protocols_config():
     location = get_fullpath('/pantheon/src/config.yml')
@@ -47,17 +42,14 @@ def parse_pantheon_protocols_config():
 
     with open(location) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
-
     
 def parse_traces_config():
     with open(os.path.join(context.entry_dir, 'config/traces.yml')) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
 
-
 def parse_training_config():
     with open(os.path.join(context.entry_dir, 'config/train.yml')) as config:
         return yaml.load(config, Loader=yaml.FullLoader)
-
 
 def parse_prod_config():
     with open(os.path.join(context.entry_dir, 'config/prod.yml')) as config:
@@ -128,3 +120,15 @@ def get_private_ip():
         # If no match is found, set the IP address to None
         ip_address = None
     return ip_address
+
+def extend_features_with_stats(all_features, stat_features):
+    # all_feature does not need to be modified
+    all_features = all_features.copy()
+    # Iterate through train_stat_features
+    for stat_feature in stat_features:
+        for w_size in ['s', 'm', 'l']:
+            # Check if the stat_feature is in all_features
+            if stat_feature in all_features:
+                # Append additional statistical features to all_features
+                all_features.extend([f"{stat_feature}_{w_size}_avg", f"{stat_feature}_{w_size}_min", f"{stat_feature}_{w_size}_max"])
+    return all_features

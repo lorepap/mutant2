@@ -3,7 +3,7 @@
 #include "mutant.h"
 
 #define NETLINK_USER 25
-#define MAX_PAYLOAD 256 /* maximum payload size*/
+#define MAX_PAYLOAD 256
 
 // Communication Flags
 #define COMM_END 0
@@ -17,10 +17,10 @@ static u32 socketId = -1;
 static u32 selected_proto_id = CUBIC;
 static u32 prev_proto_id = CUBIC;
 static bool switching_flag = false;
-static u32 prev_delivered = 0;
-// static u32 prev_lost = 0;
-u32 delivered_diff;
-u64 loss_rate;
+struct mutant_info info;
+
+u64 thruput = 0;
+u64 loss_rate = 0.0;
 
 
 // Wrapper struct to call the tcp_congestion_ops of the selected policy
@@ -173,7 +173,6 @@ static void end_connection(struct nlmsghdr *nlh)
         }
         kfree(saved_states);
     }
-
 
     // Reset the current_ops to the default
     mutant_wrapper.current_ops = &cubictcp;
@@ -734,56 +733,57 @@ void mutant_switch_congestion_control(void) {
     }
 }
 
+static void send_info(struct mutant_info *info) {
+    char msg[MAX_PAYLOAD - 1];
+
+    snprintf(msg, MAX_PAYLOAD - 1,
+    "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u",
+    info->now, info->snd_cwnd, info->rtt_us, info->srtt_us, info->mdev_us, 
+    info->min_rtt, info->advmss, info->delivered, info->lost_out, 
+    info->packets_out, info->retrans_out, info->rate, info->prev_proto_id, 
+    info->selected_proto_id, info->thruput, info->loss_rate, info->intv);
+
+    send_msg(msg, socketId);
+}
 
 static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
 {
-    // message vars
-    char message[MAX_PAYLOAD - 1];
-    u64 thruput;
-    u64 loss_rate = 0.0;
+    u32 rate = READ_ONCE(tp->rate_delivered);
+    u32 intv = READ_ONCE(tp->rate_interval_us);
 
     if (tp->packets_out + tp->retrans_out > 0) 
         loss_rate = ((u64) tp->lost_out * 100) / (tp->packets_out + tp->retrans_out);
 
-    if (tp->lost_out > 0)
-        // printk("Mutant %s: delivered: %u, lost_out: %u, packets_out: %u, retrans_out: %u, loss_rate: %llu", __FUNCTION__, tp->delivered, tp->lost_out, tp->packets_out, tp->retrans_out, loss_rate);
-    u32 rate = READ_ONCE(tp->rate_delivered);
-    u32 intv = READ_ONCE(tp->rate_interval_us);
     
     if (rate && intv) {
         thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8; // USEC_PER_SEC=1e6; 8 to convert to bits (MSS is in bytes); throughput is in bps
-        do_div(thruput, tp->rate_interval_us);
+        do_div(thruput, intv);
+    }
+    if (rate==0) {
+        thruput = 0;
     }
 
-    u32 feature_values[] = {tcp_jiffies32, 
-                            tp->snd_cwnd, 
-                            tp->rack.rtt_us, 
-                            tp->srtt_us, 
-                            tp->mdev_us,
-                            tcp_min_rtt(tp), 
-                            tp->advmss, 
-                            tp->delivered, 
-                            tp->lost_out,
-                            tp->packets_out, 
-                            tp->retrans_out, 
-                            READ_ONCE(tp->rate_delivered), 
-                            prev_proto_id, 
-                            selected_proto_id,
-                            thruput,
-                            loss_rate
-                            };
-
-    // Construct the message
-    char formatted_message[MAX_PAYLOAD - 1];
-    int offset = 0;
-    int i;
-    for (i = 0; i < sizeof(feature_values) / sizeof(feature_values[0]); ++i) {
-        offset += snprintf(formatted_message + offset, MAX_PAYLOAD - 1 - offset,
-                           "%u;", feature_values[i]);
-    }
+    info.now = tcp_jiffies32;
+    info.snd_cwnd = tp->snd_cwnd;
+    info.rtt_us = tp->rack.rtt_us;
+    info.srtt_us = tp->srtt_us;
+    info.mdev_us = tp->mdev_us;
+    info.min_rtt = tcp_min_rtt(tp);
+    info.advmss = tp->advmss;
+    info.delivered = tp->delivered;
+    info.lost_out = tp->lost_out;
+    info.packets_out = tp->packets_out;
+    info.retrans_out = tp->retrans_out;
+    info.rate = rate; 
+    info.prev_proto_id = prev_proto_id;  
+    info.selected_proto_id = selected_proto_id;  
+    info.thruput = thruput;  
+    info.loss_rate = loss_rate;
+    info.intv = intv;
 
     // Send feature values
-    send_msg(formatted_message, socketId);
+    if (info.rtt_us)
+        send_info(&info);
 }
 
 // static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
@@ -893,10 +893,10 @@ static void mutant_tcp_pkts_acked(struct sock *sk, const struct ack_sample *samp
     }
     // Send network features every ack (for now)    
     struct tcp_sock *tp = tcp_sk(sk);
+    
     if (socketId == -1) {
         return;
     }
-    send_net_params(tp, sk, socketId);
     // Switching operation
     if (switching_flag) {
         // printk("%s: Switching flag ON", __FUNCTION__);
@@ -905,6 +905,8 @@ static void mutant_tcp_pkts_acked(struct sock *sk, const struct ack_sample *samp
         load_state(sk);
         switching_flag = false;
     }
+    
+    send_net_params(tp, sk, socketId);
     // print_mutant_state(sk);
 }
 

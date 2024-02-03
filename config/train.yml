@@ -1,4 +1,4 @@
-all_features:
+kernel_info:
   - now
   - cwnd
   - rtt
@@ -15,10 +15,11 @@ all_features:
   - crt_proto_id
   - thruput
   - loss_rate
+  - intv
 
 # TODO: add rtt_rate
 train_stat_features:
-  - rtt
+  - srtt
   - rtt_dev
   - lost
   - in_flight
@@ -28,9 +29,11 @@ train_stat_features:
 train_non_stat_features:
   - srtt
   - rtt_dev
-  - thruput
+  - lost
+  - in_flight
   - delivery_rate
   - prev_proto_id
+  - thruput
   - loss_rate
 
 train_episodes: 30

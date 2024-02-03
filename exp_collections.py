@@ -2,8 +2,8 @@ import subprocess
 
 # Define the experiments based on provided parameters
 experiments = [
-    # {"name": "Baseline", "bw": 42, "rtt": 20, "bdp_mult": 1},
-    # {"name": "Low_Bandwidth", "bw": 6, "rtt": 20, "bdp_mult": 1},
+    {"name": "Baseline", "bw": 42, "rtt": 20, "bdp_mult": 1},
+    {"name": "Low_Bandwidth", "bw": 6, "rtt": 20, "bdp_mult": 1},
     {"name": "High_RTT", "bw": 12, "rtt": 80, "bdp_mult": 1},
     {"name": "Large_Queue", "bw": 12, "rtt": 20, "bdp_mult": 10},
     {"name": "Mixed_Conditions", "bw": 42, "rtt": 30, "bdp_mult": 2},

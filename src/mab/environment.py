@@ -14,6 +14,7 @@ from comm.kernel_thread import KernelRequest
 from comm.netlink_communicator import NetlinkCommunicator
 from mab.moderator import Moderator
 import yaml
+from utilities.logger import Logger
 from comm.comm import ACTION_FLAG
 
 import math
@@ -28,16 +29,16 @@ class MabEnvironment(gym.Env):
                  config
                  ):
 
-        # self.moderator = moderator
+        # Load the configuration
         self.config = config
-        self.width_state = 41
-        self.height_state = config['window_len']
 
         # Kernel state
         self.jiffies_per_state = config['jiffies_per_state']
         self.last_delivered = 0
 
         # Define action and observation space
+        self.width_state = 41
+        self.height_state = config['window_len']
         self.action_space = spaces.Discrete(config['num_actions'])
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(self.height_state, self.width_state), dtype=int)
@@ -45,20 +46,16 @@ class MabEnvironment(gym.Env):
         # Step counter
         self.steps_per_episode = config['steps_per_episode']
         self.step_counter = 0
-
-        # Keep current state
-        # self.curr_state = np.zeros((self.height_state, self.width_state))
-        # print( "[DEBUG] self.curr_state.shape: ", self.curr_state.shape)
+        self.global_step_counter = 0
 
         # Reward
         self.rws = dict() # list of rws for each step
-        # self.delta = config['delta']
         self.curr_reward = 0
         self.last_rtt = 0
         self.min_thr = 0
         self.min_rtt = sys.maxsize
         self.last_cwnd = 0
-        self.epoch = -1
+        self.epoch = 0
         self.allow_save = False
         self.step_wait = config['step_wait_seconds']
         self.zeta = config['reward']['zeta']
@@ -69,26 +66,27 @@ class MabEnvironment(gym.Env):
         self.cwnd = []
 
         # Feature extractor
-        self.feature_names = self.config['all_features'] # List of features
+        self.feature_names = self.config['kernel_info'] # List of features
         self.stat_features= self.config['train_stat_features']
         self.non_stat_features = self.config['train_non_stat_features']
         self.window_sizes = self.config['window_sizes']
+        self.all_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
         self.feat_extractor = FeatureExtractor(self.stat_features) # window_sizes=(10, 200, 1000)
 
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
-
-        self.with_kernel_thread = True
         self.num_fields_kernel = config['num_fields_kernel']
-
+        
+        # Logger
         self.now_str = utils.time_to_str()
-        self.log_traces = ""
+        csv_file = os.path.join(context.entry_dir, 'log', 'mab', 'run', f'run.{self.now_str}.csv')
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        self.logger = Logger(csv_file=csv_file, 
+                    columns=['epoch', 'step']+self.all_features+['reward'])
+        # self.log_traces = ""
         self.allow_save = False
-        self.floating_error = 1e-12
-        self.nb = 1e6
         self.initiated = False
         self.curr_reward = 0
-        self.moderator = moderator
 
 
     def _get_state(self):
@@ -131,12 +129,6 @@ class MabEnvironment(gym.Env):
 
         # print the collected data
         print(f'Collected data: {collected_data}')
-
-        # Compute the last delivery (bytes) and the loss rate
-        # self.prev_delivered = collected_data['delivered'] if not self.prev_delivered else self.prev_delivered # For the first iteration
-        # delivered_diff = collected_data['delivered'] - self.prev_delivered # Will be 0 for the first iteration
-        # self.prev_delivered = collected_data['delivered']
-        # collected_data['loss_rate'] = 0 if not delivered_diff + collected_data['lost'] else collected_data['lost'] / (delivered_diff + collected_data['lost'])
 
         # Compute statistics for the features
         self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
@@ -227,12 +219,15 @@ class MabEnvironment(gym.Env):
         # Compute the mean of rewards
         for _, k_features in enumerate(s_tmp):
             # Extract individual features
-            # cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, loss_rate, in_flight, retrans, thr = k_features
-            tmp_collected_data = {name: value for name, value in zip(self.feature_names, k_features)}
+            tmp_collected_data = {name: value for name, value in zip(self.all_features, k_features)}
             rw = self.compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['srtt'])
             rws.append(rw)
             binary_rw = 0 if rw <= self.curr_reward else 1
             binary_rws.append(binary_rw)
+
+            if self.allow_save:
+                # Log the features
+                self.logger.log([self.epoch, self.step_counter] + [val for val in k_features] + [rw])
 
         # TODO: mean of rewards; could we do better?
         # The following aggregated value refers to the mean of the rewards computed during step_wait (switching time) within the step
@@ -251,19 +246,6 @@ class MabEnvironment(gym.Env):
     def update_rtt(self, rtt: float) -> None:
         if rtt > 0:
             self.last_rtt = rtt
-    
-    def record(self, state, reward, step, action):
-        cwnd, rtt, rtt_dev, rtt_min, delivered, delivered_diff, lost, in_flight, retrans, thr= state
-
-        if cwnd == 0:
-            return
-
-        cwnd_diff = cwnd - self.last_cwnd
-
-        self.last_cwnd = cwnd
-
-        self.log_traces = f'{self.log_traces}\n {action}, {cwnd}, {rtt}, {rtt_dev}, {delivered}, {delivered_diff}, {lost}, {in_flight}, {retrans}, {cwnd_diff}, {thr}' \
-                 f'{step}, {round(self.curr_reward, 4)}, {round(reward, 4)}'
 
     def step(self, action):
         self._change_cca(int(action))
@@ -271,6 +253,7 @@ class MabEnvironment(gym.Env):
 
         done = False if self.step_counter != self.steps_per_episode-1 else True
         self.step_counter = (self.step_counter+1) % self.steps_per_episode
+        self.global_step_counter += 1
 
         avg_reward = round(np.mean(rewards), 4)
         avg_binary_reward = np.bincount(binary_rewards).argmax()
@@ -290,10 +273,6 @@ class MabEnvironment(gym.Env):
 
         obs_mean = np.mean(observation, axis=0)
 
-        if self.allow_save:
-            self.record(obs_mean, avg_binary_reward,
-                        step, action)
-
         # if not self.moderator.can_start() and step > 1:
         #     done = True
 
@@ -303,7 +282,6 @@ class MabEnvironment(gym.Env):
         self._init_communication()
         self._change_cca(0)
         observation, _, _, _ = self._get_state()
-
         self.epoch += 1
 
         data = {'obs': observation}
@@ -359,16 +337,6 @@ class MabEnvironment(gym.Env):
     
     def enable_log_traces(self):
         self.allow_save = True
-
-    def save_log(self, model_name: str, log_path: str) -> str:
-
-        log_file_name = f'{model_name}.{self.now_str}.csv'
-        log_fullpath = os.path.join(context.entry_dir, log_path, log_file_name)
-
-        with open(log_fullpath, 'w') as writer:
-            writer.write(self.log_traces)
-
-        return log_file_name, log_fullpath
 
     def close(self):
         self._end_communication()

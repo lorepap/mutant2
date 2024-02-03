@@ -122,7 +122,7 @@ class Collector():
 
         data_dict = {}
         collected_data = {}
-        feature_names = config['all_features']
+        feature_names = config['kernel_info']
         collected_data = {feature: [] for feature in feature_names}
         collected_data['reward'] = []
         start = time.time()
@@ -139,20 +139,21 @@ class Collector():
                 collected_data[feature].append(data_dict[feature])
 
             reward = pow(abs(data_dict['thruput'] - config['reward']['zeta'] * data_dict['loss_rate'] / data_dict['srtt']), config['reward']['kappa'])
+            data_dict['reward'] = reward
             collected_data['reward'].append(reward)
             
             # print('\n')
             # print('Reward:', reward)
             # print('\n')
 
-            if data_dict['thruput'] > self.bw*2:
-                print('timestamp:', data_dict['now'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'], 'Reward:', reward)
+            # if data_dict['thruput'] > self.bw*2:
+            #     print('timestamp:', data_dict['now'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'], 'Reward:', reward)
             
             # print("-- Collected Data --")
             # print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
 
             # Save collected data to csv file
-            # self.write_data(collected_data, path_to_file)
+            self.write_data(data_dict, path_to_file)
         
         print(f"Collection of {self.protocol} completed.")
         print(f"Avg thr: {round(np.mean(collected_data['thruput']), 2)} Mbps, \

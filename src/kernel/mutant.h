@@ -28,8 +28,28 @@
 #define ILLINOIS 11
 
 
-// Struct for saving state of TCP congestion control
+struct mutant_info {
+    u32 now;
+    u32 snd_cwnd;
+    u32 rtt_us;
+    u32 srtt_us;
+    u32 mdev_us;
+    u32 min_rtt;
+    u32 advmss;
+    u32 delivered;
+    u32 lost_out;
+    u32 packets_out;
+    u32 retrans_out;
+    u64 rate;
+    u32 prev_proto_id;
+    u32 selected_proto_id;
+    u64 thruput;
+    u32 loss_rate;
+    u32 intv;
+};
 
+
+// Struct for saving state of TCP congestion control
 // Cubic variables
 struct bictcp {
 	u32	cnt;		/* increase cwnd by 1 after ACKs */
@@ -270,6 +290,6 @@ static u32 mutant_tcp_sndbuf_expand(struct sock *sk);
 static u32 mutant_tcp_min_tso_segs(struct sock *sk);
 static size_t mutant_tcp_get_info(struct sock *sk, u32 ext, int *attr, union tcp_cc_info *info);
 static void mutant_tcp_release(struct sock *sk);
-
+static void send_info(struct mutant_info *info);
 
 #endif /* MUTANT_H */
