@@ -22,7 +22,6 @@ struct mutant_info info;
 u64 thruput = 0;
 u64 loss_rate = 0.0;
 
-
 // Wrapper struct to call the tcp_congestion_ops of the selected policy
 struct tcp_mutant_wrapper {
     struct tcp_congestion_ops *current_ops;
@@ -173,7 +172,7 @@ static void end_connection(struct nlmsghdr *nlh)
         }
         kfree(saved_states);
     }
-
+    
     // Reset the current_ops to the default
     mutant_wrapper.current_ops = &cubictcp;
     
@@ -192,7 +191,7 @@ static void receive_msg(struct sk_buff *skb)
     }
 
     nlh = (struct nlmsghdr *)skb->data;
-	// printk(KERN_INFO "received data");
+	printk(KERN_INFO "received data");
     switch (nlh->nlmsg_flags)
     {
     case COMM_END:
@@ -264,7 +263,6 @@ static void init_saved_states(void) {
     saved_states->illinois_state = NULL;
     // Initialize other pointers as needed
 }
-
 
 
 // FOR DEBUG
@@ -741,8 +739,8 @@ static void send_info(struct mutant_info *info) {
     info->now, info->snd_cwnd, info->rtt_us, info->srtt_us, info->mdev_us, 
     info->min_rtt, info->advmss, info->delivered, info->lost_out, 
     info->packets_out, info->retrans_out, info->rate, info->prev_proto_id, 
-    info->selected_proto_id, info->thruput, info->loss_rate, info->intv);
-
+    info->selected_proto_id, info->thruput, info->loss_rate);
+    // printk("Sending info: %s", msg);
     send_msg(msg, socketId);
 }
 
@@ -753,7 +751,6 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
 
     if (tp->packets_out + tp->retrans_out > 0) 
         loss_rate = ((u64) tp->lost_out * 100) / (tp->packets_out + tp->retrans_out);
-
     
     if (rate && intv) {
         thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8; // USEC_PER_SEC=1e6; 8 to convert to bits (MSS is in bytes); throughput is in bps
@@ -779,63 +776,11 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
     info.selected_proto_id = selected_proto_id;  
     info.thruput = thruput;  
     info.loss_rate = loss_rate;
-    info.intv = intv;
 
     // Send feature values
     if (info.rtt_us)
         send_info(&info);
 }
-
-// static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
-// {
-//     // message vars
-//     char message[MAX_PAYLOAD - 1];
-
-//     u32 now = tcp_jiffies32;
-//     u32 cwnd = tp->snd_cwnd;
-//     u32 rtt = tp->rack.rtt_us;
-//     u32 srtt = tp->srtt_us;
-//     u32 rtt_dev = tp->mdev_us;
-// 	u32 rtt_min = tcp_min_rtt(tp);
-//     u16 MSS = tp->advmss;
-//     u32 delivered = tp->delivered;
-//     u32 lost = tp->lost_out;
-//     u32 in_flight = tp->packets_out;
-//     u32 retransmitted = tp->retrans_out;
-//     u64 thruput = 0;
-
-//     if (prev_delivered < 0) {
-//         prev_delivered = delivered;
-//     }
-//     delivered_diff = delivered - prev_delivered;
-//     prev_delivered = delivered
-
-//     if (delivered_diff > 0) {
-//         loss_rate = (u64)lost / (delivered_diff + lost);
-//     }
-//     else {
-//         loss_rate = 0;
-//     }
-
-//     // Throughput (see tcp.c:tcp_compute_delivery_rate)
-//     // USEC_PER_SEC=1e6; 8 to convert to bits (MSS is in bytes); throughput is in bps
-//     u32 rate = READ_ONCE(tp->rate_delivered);
-// 	u32 intv = READ_ONCE(tp->rate_interval_us);
-//     if (rate && intv) {
-//         thruput = (u64)rate * tp->mss_cache * USEC_PER_SEC * 8;
-//         // Print mss and thruput
-//         // printk("Mutant %s: MSS: %u, thruput: %llu, USEC_PER_SEC: %u", __FUNCTION__, tp->mss_cache, thruput, USEC_PER_SEC);
-//         do_div(thruput, tp->rate_interval_us);
-//     }
-
-//     snprintf(message, MAX_PAYLOAD - 1, "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%llu;%u;%u",
-//              now, cwnd, rtt, srtt, rtt_dev, rtt_min, MSS, delivered, lost,
-//              in_flight, retransmitted, thruput, rate, loss_rate, prev_proto_id);
-    
-//     // printk("Mutant %s: Sending message to user: %s", __FUNCTION__, message);
-
-//     send_msg(message, socketId);
-// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -897,6 +842,7 @@ static void mutant_tcp_pkts_acked(struct sock *sk, const struct ack_sample *samp
     if (socketId == -1) {
         return;
     }
+    
     // Switching operation
     if (switching_flag) {
         // printk("%s: Switching flag ON", __FUNCTION__);
@@ -907,7 +853,6 @@ static void mutant_tcp_pkts_acked(struct sock *sk, const struct ack_sample *samp
     }
     
     send_net_params(tp, sk, socketId);
-    // print_mutant_state(sk);
 }
 
 static void mutant_tcp_ack_event(struct sock *sk, u32 flags) {

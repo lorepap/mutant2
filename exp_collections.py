@@ -16,7 +16,7 @@ for experiment in experiments:
         "python",
         "src/collect.py",
         "--time",
-        "30",
+        "60",
         "--bdp_mult",
         str(experiment["bdp_mult"]),
         "--rtt",

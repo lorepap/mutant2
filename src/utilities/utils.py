@@ -6,6 +6,8 @@ from utilities import context
 from datetime import datetime
 import numpy as np
 import yaml
+import json
+import logging
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -22,16 +24,11 @@ def time_to_str() -> str:
 def str_to_time(time: str) -> datetime:
     return datetime.strptime(time, TIME_FORMAT)
 
-def parse_models_config():
-    with open(os.path.join(context.entry_dir, 'config/models.yml')) as config:
-        return yaml.load(config, Loader=yaml.BaseLoader)
-    
-def parse_reward_config():
-    with open(os.path.join(context.entry_dir, 'config/rewards.yml')) as config:
-        return yaml.load(config, Loader=yaml.BaseLoader)
-
 def parse_protocols_config():
     with open(os.path.join(context.entry_dir, 'config/protocols.yml')) as config:
+        return yaml.load(config, Loader=yaml.BaseLoader)
+def parse_features_config():
+    with open(os.path.join(context.entry_dir, 'config/features.yml')) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
 
 def parse_pantheon_protocols_config():
@@ -132,3 +129,23 @@ def extend_features_with_stats(all_features, stat_features):
                 # Append additional statistical features to all_features
                 all_features.extend([f"{stat_feature}_{w_size}_avg", f"{stat_feature}_{w_size}_min", f"{stat_feature}_{w_size}_max"])
     return all_features
+
+def log_settings(filename: str, settings: dict, status: str = False, training_time: str = "") -> None:
+    logging.basicConfig(filename=filename, level=logging.INFO, format='%(message)s')
+    settings['status'] = status
+    if status == "success":
+        settings['training_time'] = training_time
+    log_message = json.dumps(settings)
+    logging.info(log_message)
+
+def update_log(filename, settings, status, training_time):
+    with open(filename, 'r') as file:
+        logs = [json.loads(log) for log in file.readlines()]
+
+    timestamp = settings.get("timestamp")
+    index = next((i for i, log in enumerate(logs) if log.get("timestamp") == timestamp), None)
+    if index is not None:
+        logs[index].update({"status": status, "training_time": training_time})
+
+    with open(filename, 'w') as file:
+        file.writelines(json.dumps(log) + '\n' for log in logs)

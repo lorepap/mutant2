@@ -2,14 +2,14 @@ from collections import deque
 import statistics
 
 class FeatureExtractor:
-    def __init__(self, feature_names, window_sizes=[10, 200, 1000]):
+    def __init__(self, feature_names, window_sizes=['10', '200', '1000']):
         self.feature_names = feature_names
         self.window_sizes = window_sizes
-        self.features = {size: {stat: {} for stat in ['win', 'min', 'max', 'avg']} for size in window_sizes}
+        self.features = {size: {stat: {} for stat in ['win', 'min', 'max', 'avg']} for size in self.window_sizes}
 
         # Initialize deques for each feature and each window size
-        for window_size in window_sizes:
-            self.features[window_size]['win'] = {feature: deque(maxlen=window_size) for feature in feature_names}
+        for window_size in self.window_sizes:
+            self.features[window_size]['win'] = {feature: deque(maxlen=int(window_size)) for feature in feature_names}
             for stat in ['min', 'max', 'avg']:
                 self.features[window_size][stat] = {feature: [] for feature in feature_names}
 

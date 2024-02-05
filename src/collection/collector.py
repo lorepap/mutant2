@@ -5,6 +5,7 @@ import numpy as np
 
 from collection.kernel_comm import CollectionCommManager
 from comm.kernel_thread import KernelRequest
+from utilities import utils
 
 
 # Protocol mapping
@@ -47,9 +48,10 @@ class Collector():
         self.running_time = running_time
         # TODO: handle the params with a config file
         with open('config/train.yml', 'r') as file:
-            config = yaml.safe_load(file)
+            self.sys_settings = yaml.safe_load(file)
+        self.feature_settings = utils.parse_features_config()
 
-        self.num_fields_kernel = config['num_fields_kernel']
+        self.num_fields_kernel = self.sys_settings['num_fields_kernel']
         self.initiated = False
         self.prev_delivered = None
         self._init_communication()
@@ -107,9 +109,6 @@ class Collector():
         communicating in real time with the kernel module. During the communication, the thread receive the "message" from the kernel 
         module, containing the network information, and store everything locally.
         """
-        # Read zeta and kappa from config file
-        with open('config/train.yml', 'r') as file:
-            config = yaml.safe_load(file)
 
         # Check if the file already exists
         csv_dir = f'{self.log_dir}/csv'
@@ -122,7 +121,7 @@ class Collector():
 
         data_dict = {}
         collected_data = {}
-        feature_names = config['kernel_info']
+        feature_names = self.feature_settings['kernel_info']
         collected_data = {feature: [] for feature in feature_names}
         collected_data['reward'] = []
         start = time.time()
@@ -138,13 +137,13 @@ class Collector():
             for feature in feature_names:
                 collected_data[feature].append(data_dict[feature])
 
-            reward = pow(abs(data_dict['thruput'] - config['reward']['zeta'] * data_dict['loss_rate'] / data_dict['srtt']), config['reward']['kappa'])
+            reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']) / (data_dict['srtt']*10**-6), self.sys_settings['reward']['kappa'])
             data_dict['reward'] = reward
+            print('Reward:', reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
             collected_data['reward'].append(reward)
             
-            # print('\n')
-            # print('Reward:', reward)
-            # print('\n')
+            print('\n')
+            print('\n')
 
             # if data_dict['thruput'] > self.bw*2:
             #     print('timestamp:', data_dict['now'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'], 'Reward:', reward)
@@ -153,7 +152,7 @@ class Collector():
             # print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
 
             # Save collected data to csv file
-            self.write_data(data_dict, path_to_file)
+            # self.write_data(data_dict, path_to_file)
         
         print(f"Collection of {self.protocol} completed.")
         print(f"Avg thr: {round(np.mean(collected_data['thruput']), 2)} Mbps, \

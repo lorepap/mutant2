@@ -31,7 +31,7 @@ class KernelRequest(threading.Thread):
                     print("[KERNEL THREAD] Timeout occurred. Exiting...")
                     break
                 
-                # print("[KERNEL THREAD] Waiting for message...")
+                # print("[KERNEL THREAreturn self.socket.return self.socket.recv(8192)recv(8192)D] Waiting for message...")
                 msg = self.comm.receive_msg()
                 # print("[KERNEL THREAD] Received message:", msg)
                 if msg:
@@ -49,13 +49,16 @@ class KernelRequest(threading.Thread):
                         entry = [int(field) if field.isdigit() or (field[1:].isdigit() and field[0] == '-') else field for field in split_data]
                         # print("[KERNEL THREAD] Data received:", entry)
                         self.queue.put(entry)
+                        # print queue size
+                        if (self.queue.qsize() % 100 == 0):
+                            print("[KERNEL THREAD] Queue size:", self.queue.qsize())
+                        # print("[KERNEL THREAD] Queue size:", self.queue.qsize())
                         # print("[KERNEL THREAD] Queue contents:", list(self.queue.queue))
                 else:
                     print("[KERNEL THREAD] Exit event set. Exiting...")
                     break
             except Exception as _:
                 print('\n')
-                print(traceback.format_exc())
 
     def exit(self):
         print("[KERNEL THREAD] Exiting...")

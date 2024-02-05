@@ -14,8 +14,7 @@ def run():
     runner.setup_communication()
     runner.train()
     runner.stop_communication()
-    
-    runner.save_history()
+
     runner.save_model()
 
     runner.shut_down_env()

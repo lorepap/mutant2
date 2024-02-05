@@ -14,6 +14,7 @@ from comm.comm import CommManager
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from mab.moderator import Moderator
 import yaml
+import logging
 
 
 class MabRunner():
@@ -22,8 +23,15 @@ class MabRunner():
         # running params
         with open('config/train.yml', 'r') as file:
             config = yaml.safe_load(file)
+        self.config = config
+        self.timestamp = utils.time_to_str()
+
+        # dir
+        self.log_dir = "log/mab"
+        self.history_dir = "log/mab/history"
+        self.model_dir = "log/mab/model"
+        self.make_paths()
         
-        self.now = utils.time_to_str()
         # Set up communication with kernel
         self.cm = CommManager(log_dir_name='log/iperf', rtt=config['min_rtt'], bw=config['bw'], bdp_mult=config['bdp_mult']) #iperf_dir, time
 
@@ -34,7 +42,7 @@ class MabRunner():
 
         self.base_config_dir = os.path.join(context.entry_dir, 'log/mab/config')
         self.model_path = os.path.join(
-            context.entry_dir, f'log/mab/model')
+            context.entry_dir, self.log_dir, 'model')
 
         self.training_time = None
         self.step_wait_time = config['step_wait_seconds']
@@ -45,20 +53,19 @@ class MabRunner():
         self.model = MabAgent(self.nchoices, self.moderator)
         
         # TODO: checkpoint filepath to be changed for a better naming convention
-        self.model.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.now}')
+        self.model.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.timestamp}')
         if not checkpoint_filepath:
             self.checkpoint_filepath = os.path.join(
-                context.entry_dir, 'log', 'mab', 'checkpoint', f'{self.model_path}.{self.model.get_model_name()}')
+                context.entry_dir, self.log_dir, 'checkpoint', f'{self.model_path}.{self.model.get_model_name()}')
 
         self.environment = MabEnvironment(self.cm, self.moderator, config)
         self.environment.allow_save = log
         self.training_steps = config['train_episodes'] * self.steps_per_episode
         self.now = time.time()
 
-        # dir
-        self.history_dir = "log/mab/history"
-        self.model_dir = "log/mab/model"
-        self.make_paths()
+        # Settings
+        self.settings = {'timestamp': self.timestamp, **config, **self.environment.feature_settings}
+        utils.log_settings(os.path.join(self.log_dir, 'settings.json'), self.settings, 'failed')
 
 
     def setup_communication(self):
@@ -74,11 +81,11 @@ class MabRunner():
         self.environment.close()
 
     def make_paths(self):
+        os.makedirs(self.log_dir, exist_ok=True)
         os.makedirs(self.history_dir, exist_ok=True)
         os.makedirs(self.model_dir, exist_ok=True)
 
     def train(self) -> Any:
-        now = self.now
 
         checkpoint_callback = ModelCheckpoint(
             filepath=self.checkpoint_filepath
@@ -102,6 +109,9 @@ class MabRunner():
         self.training_time = time.time() - start
         
         self.history = self.train_res.history
+
+        # log the completed training
+        utils.update_log(os.path.join(self.log_dir, 'settings.json'), self.settings, 'success', self.training_time)
 
         return self.history
 
@@ -136,25 +146,6 @@ class MabRunner():
         import pandas as pd
         df = pd.DataFrame(self.history)
         df.to_json(path)
-
-        # with open(path, 'w+') as file:
-        #     json.dump(df, file)
-
-        # update config
-        # self.config['runs'].append({
-        #     'model_name': self.model.get_model_name(),
-        #     'path': path,
-        #     'timestamp': self.now,
-        #     'training_time': self.training_time,
-        #     'trace': self.trace_name,
-        #     'actions': self.nchoices,
-        #     'step_wait': self.step_wait_time,
-        #     'num_features': self.num_features,
-        #     'num_kernel_fields': self.num_fields_kernel,
-        #     'steps_per_episode': self.steps_per_episode,
-        #     'reward': self.environment.reward_name
-        # })
-        # self.save_config(self.config_path, self.config)
     
     def save_model(self, reset_model: bool = True) -> str:
         path = os.path.join(

@@ -1,11 +1,12 @@
 import csv
+import json
 
 class Logger:
     def __init__(self, csv_file, columns):
         self.csv_file = csv_file
         self.csv_header_written = False
         self.cols = columns
-
+        
     def log(self, data):
         # Append data to CSV file
         self.append_to_csv(data)

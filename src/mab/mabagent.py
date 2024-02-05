@@ -33,6 +33,7 @@ class MabAgent(Agent):
         self.nchoices = nchoices
         self.base_algorithm = SGDClassifier(loss='log', max_iter=1000, tol=1e-3, shuffle=False, verbose=0)
         self.model = self.get_policy()
+        self.prev_action = 0
 
     def get_model(self) -> _BasePolicy:
         return self.model
@@ -72,8 +73,8 @@ class MabAgent(Agent):
         N = len(actions)
         # print("[DEBUG] length actions:", N)
 
-        print(f'Observation: {observation["obs"].shape}')
-        print("[DEBUG] actions: ", actions)
+        # print(f'Observation: {observation["obs"].shape}')
+        # print("[DEBUG] actions: ", actions)
 
         # Book-keeping.
         self.recent_observation = observation
@@ -94,7 +95,7 @@ class MabAgent(Agent):
         # np.random.seed(self.counter)
 
         N = len(self.actions)
-        print("[DEBUG] N: ", N)
+        # print("[DEBUG] N: ", N)
         self.model.partial_fit(
             self.recent_observation['obs'],
             np.array(self.actions),

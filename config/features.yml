@@ -1,0 +1,41 @@
+kernel_info:
+  - now
+  - cwnd
+  - rtt
+  - srtt
+  - rtt_dev
+  - rtt_min
+  - mss
+  - delivered
+  - lost
+  - in_flight
+  - retransmitted
+  - delivery_rate
+  - prev_proto_id
+  - crt_proto_id
+  - thruput
+  - loss_rate
+
+# TODO: add rtt_rate
+train_stat_features:
+  - srtt
+  - rtt_dev
+  - lost
+  - in_flight
+  - thruput
+
+# replace delivery rate with its max
+train_non_stat_features:
+  - srtt
+  - rtt_dev
+  - lost
+  - in_flight
+  - delivery_rate
+  - prev_proto_id
+  - thruput
+  - loss_rate
+
+window_sizes:
+  - 10
+  - 200
+  - 1000

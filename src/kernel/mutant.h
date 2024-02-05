@@ -45,7 +45,6 @@ struct mutant_info {
     u32 selected_proto_id;
     u64 thruput;
     u32 loss_rate;
-    u32 intv;
 };
 
 

@@ -3,6 +3,7 @@ from pickle import TRUE
 import socket
 import struct
 import traceback
+import errno
 
 NETLINK_TEST = 25
 
@@ -11,6 +12,8 @@ class NetlinkCommunicator():
 
     def __init__(self):
         self.socket = self.create_socket()
+        self.socket.setblocking(False)
+        self.set_socket_buffer_size()
 
     # def init_socket(self):
     #     s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_TEST)
@@ -41,15 +44,12 @@ class NetlinkCommunicator():
     def send_msg(self, msg):
         self.socket.send(msg)
 
+    def set_socket_buffer_size(self, recv_size=10000, send_size=10000):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, recv_size)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_size)
+
     def receive_msg(self):
-        try:
-            return self.socket.recv(8192)
-        except Exception as err:
-            print('\n')
-            print(traceback.format_exc())
-            self.socket.close()
-            # clear buffer
-            return None
+        return self.socket.recv(8192)
 
     def read_netlink_msg(self, msg):
         value_len, value_type, value_flags, value_seq, value_pid = struct.unpack("=LHHLL", msg[:16])
