@@ -250,7 +250,7 @@ class MabEnvironment(gym.Env):
     
     def compute_reward(self, thr: float, loss_rate: float, rtt: float):
         # TODO: this is single-flow reward, no friendliness. Multi-flow scenario to be considered.
-        reward = pow(abs((thr - self.zeta * loss_rate) / (rtt*10**-6), self.kappa))
+        reward = pow(abs((thr - self.zeta * loss_rate) / (rtt*10**-6)), self.kappa)
         # print("[DEBUG] Reward: ", round(reward, 2), "Thruput (Mbps): ", round(thr, 2), "Loss rate: ", round(loss_rate, 2), "RTT (ms): ", round(rtt, 2))
         return reward
 
