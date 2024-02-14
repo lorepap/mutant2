@@ -50,8 +50,6 @@ class KernelRequest(threading.Thread):
                         # print("[KERNEL THREAD] Data received:", entry)
                         self.queue.put(entry)
                         # print queue size
-                        if (self.queue.qsize() % 100 == 0):
-                            print("[KERNEL THREAD] Queue size:", self.queue.qsize())
                         # print("[KERNEL THREAD] Queue size:", self.queue.qsize())
                         # print("[KERNEL THREAD] Queue contents:", list(self.queue.queue))
                 else:
