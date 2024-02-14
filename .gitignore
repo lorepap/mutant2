@@ -204,3 +204,4 @@ traces/
 log/iperf/*
 log/mab/model/*
 log/mab/run/*
+log/mab/*
