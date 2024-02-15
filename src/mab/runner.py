@@ -18,8 +18,11 @@ import logging
 
 
 class MabRunner():
-    def __init__(self, checkpoint_filepath: str = None, log=True):
+    def __init__(self, policies, min_rtt, bw, bdp_mult, checkpoint_filepath: str = None, log=True):
 
+        # List of CCA IDs to map the policies to the action 
+        self.policies = policies
+        
         # running params
         with open('config/train.yml', 'r') as file:
             config = yaml.safe_load(file)
@@ -33,9 +36,8 @@ class MabRunner():
         self.make_paths()
         
         # Set up communication with kernel
-        self.cm = CommManager(log_dir_name='log/iperf', rtt=config['min_rtt'], bw=config['bw'], bdp_mult=config['bdp_mult']) #iperf_dir, time
-
-        self.nchoices = config['num_actions']
+        self.cm = CommManager(log_dir_name='log/iperf', rtt=min_rtt, bw=bw, bdp_mult=bdp_mult) #iperf_dir, time
+        self.nchoices = config['num_actions'] if not policies else len(policies)
         self.lr = config['lr']
         self.moderator = Moderator()
         self.num_features = config['num_features']
@@ -58,13 +60,17 @@ class MabRunner():
             self.checkpoint_filepath = os.path.join(
                 context.entry_dir, self.log_dir, 'checkpoint', f'{self.model_path}.{self.model.get_model_name()}')
 
-        self.environment = MabEnvironment(self.cm, self.moderator, config)
+        self.environment = MabEnvironment(self.cm, self.policies, config)
         self.environment.allow_save = log
         self.training_steps = config['train_episodes'] * self.steps_per_episode
         self.now = time.time()
 
         # Settings
-        self.settings = {'timestamp': self.timestamp, **config, **self.environment.feature_settings}
+        if self.policies:
+            map_proto = {p: action for action, p in zip(self.environment.map_proto.keys(), policies)}
+        else:
+            map_proto = self.environment.map_proto
+        self.settings = {'timestamp': self.timestamp, **config, 'action_mapping': map_proto, **self.environment.feature_settings}
         utils.log_settings(os.path.join(self.log_dir, 'settings.json'), self.settings, 'failed')
 
 
