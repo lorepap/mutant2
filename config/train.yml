@@ -4,7 +4,6 @@ num_features: 42
 num_fields_kernel: 14
 lr: 1e-3
 step_wait_seconds: 2
-num_actions: 11
 min_rtt: 20 # ms
 bw: 12 # Mbps
 bdp_mult: 1

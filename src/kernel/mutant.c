@@ -191,7 +191,7 @@ static void receive_msg(struct sk_buff *skb)
     }
 
     nlh = (struct nlmsghdr *)skb->data;
-	printk(KERN_INFO "received data");
+	// printk(KERN_INFO "received data");
     switch (nlh->nlmsg_flags)
     {
     case COMM_END:

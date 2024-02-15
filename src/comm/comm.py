@@ -28,6 +28,8 @@ class CommManager():
         # Compute the q_size (n. of packets)
         bdp = bw * rtt # Mbits
         mss = 1488 # bytes
+       
+        bdp_mult = round(bdp_mult, 1) if bdp_mult < 1 else int(bdp_mult)
         self.q_size = int(bdp_mult * bdp * 10**3 / (8*mss)) # packets
 
         self.init_proto()
