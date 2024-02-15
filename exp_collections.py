@@ -1,4 +1,10 @@
 import subprocess
+from argparse import ArgumentParser
+
+parser = ArgumentParser()
+parser.add_argument("--time", type=str, default="30", help="Experiment running time (s)")
+args = parser.parse_args()
+time = args.time
 
 # Define the experiments based on provided parameters
 experiments = [
@@ -8,6 +14,7 @@ experiments = [
     {"name": "Large_Queue", "bw": 12, "rtt": 20, "bdp_mult": 10},
     {"name": "Mixed_Conditions", "bw": 42, "rtt": 30, "bdp_mult": 2},
     {"name": "Challenging_Network", "bw": 6, "rtt": 100, "bdp_mult": 1},
+    {"name": "Challenging_Network_2", "bw": 12, "rtt": 30, "bdp_mult": 0.5},
 ]
 
 # Iterate over experiments and run each one
@@ -16,7 +23,7 @@ for experiment in experiments:
         "python",
         "src/collect.py",
         "--time",
-        "60",
+        time,
         "--bdp_mult",
         str(experiment["bdp_mult"]),
         "--rtt",

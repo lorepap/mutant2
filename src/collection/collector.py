@@ -111,7 +111,7 @@ class Collector():
         """
 
         # Check if the file already exists
-        csv_dir = f'{self.log_dir}/csv'
+        csv_dir = f'{self.log_dir}/csv/{int(self.running_time)}s/'
         os.makedirs(csv_dir, exist_ok=True)
         path_to_file = os.path.join(csv_dir, f'{self.protocol}.bw{self.bw}.rtt{self.rtt}.bdp_mult{self.bdp_mult}.csv')
         if os.path.exists(path_to_file):
@@ -137,13 +137,13 @@ class Collector():
             for feature in feature_names:
                 collected_data[feature].append(data_dict[feature])
 
-            reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']) / (data_dict['srtt']*10**-6), self.sys_settings['reward']['kappa'])
+            reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']),  self.sys_settings['reward']['kappa']) / (data_dict['srtt']*10**-6)
             data_dict['reward'] = reward
-            print('Reward:', reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
-            collected_data['reward'].append(reward)
+            # print('Reward:', reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
+            # collected_data['reward'].append(reward)
             
-            print('\n')
-            print('\n')
+            # print('\n')
+            # print('\n')
 
             # if data_dict['thruput'] > self.bw*2:
             #     print('timestamp:', data_dict['now'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'], 'Reward:', reward)
@@ -152,7 +152,7 @@ class Collector():
             # print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
 
             # Save collected data to csv file
-            # self.write_data(data_dict, path_to_file)
+            self.write_data(data_dict, path_to_file)
         
         print(f"Collection of {self.protocol} completed.")
         print(f"Avg thr: {round(np.mean(collected_data['thruput']), 2)} Mbps, \

@@ -25,7 +25,7 @@ class MabEnvironment(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, comm: NetlinkCommunicator, 
-                 moderator,
+                 policies,
                  config
                  ):
 
@@ -36,6 +36,11 @@ class MabEnvironment(gym.Env):
         self.last_delivered = 0
 
         # Define action and observation space
+        self.proto_config = utils.parse_protocols_config()
+        if policies:
+            self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(policies)} # action: id mapping for subset of protocols
+        else:
+            self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
         self.width_state = 41
         self.action_space = spaces.Discrete(config['num_actions'])
         self.observation_space = spaces.Box(
@@ -250,7 +255,7 @@ class MabEnvironment(gym.Env):
     
     def compute_reward(self, thr: float, loss_rate: float, rtt: float):
         # TODO: this is single-flow reward, no friendliness. Multi-flow scenario to be considered.
-        reward = pow(abs((thr - self.zeta * loss_rate) / (rtt*10**-6)), self.kappa)
+        reward = pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6)
         # print("[DEBUG] Reward: ", round(reward, 2), "Thruput (Mbps): ", round(thr, 2), "Loss rate: ", round(loss_rate, 2), "RTT (ms): ", round(rtt, 2))
         return reward
 
@@ -312,7 +317,7 @@ class MabEnvironment(gym.Env):
     def _change_cca(self, action):
 
         msg = self.netlink_communicator.create_netlink_msg(
-            'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=action)
+            'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self.map_proto[action]))
 
         self.netlink_communicator.send_msg(msg)
 
