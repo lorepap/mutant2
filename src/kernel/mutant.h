@@ -3,7 +3,8 @@
 
 #include <linux/netlink.h>
 #include <net/tcp.h>
-
+#include "protocol/base.h"
+#include "protocol/base2.h"
 
 
 #define MAX_PAYLOAD 256
@@ -26,6 +27,8 @@
 #define HTCP 9
 #define HIGHSPEED 10
 #define ILLINOIS 11
+#define BASE 12
+#define BASE2 13
 
 
 struct mutant_info {
@@ -69,6 +72,7 @@ struct bictcp {
 	u32	end_seq;	/* end_seq of the round */
 	u32	last_ack;	/* last time when the ACK spacing is close */
 	u32	curr_rtt;	/* the minimum rtt of current round */
+	
 };
 
 /* Tcp Hybla structure. */
@@ -145,6 +149,7 @@ struct veno {
 	u32 basertt;		/* the min of all Veno rtt measurements seen (in usec) */
 	u32 inc;		/* decide whether to increase cwnd */
 	u32 diff;		/* calculate the diff rate */
+	
 };
 
 /* Vegas variables */
@@ -156,11 +161,13 @@ struct vegas {
 	u16	cntRTT;		/* # of RTTs measured within last RTT */
 	u32	minRTT;		/* min of RTTs measured within last RTT (in usec) */
 	u32	baseRTT;	/* the min of all Vegas RTT measurements seen (in usec) */
+	u32	cwnd;
 };
 
 /* Yeah variables */
 /* YeAH variables */
 struct yeah {
+	
 	struct vegas vegas;	/* must be first */
 
 	/* YeAH */
@@ -200,6 +207,7 @@ struct cdg {
 	s32 delay_min;
 	u32 last_ack;
 	u32 round_start;
+	
 };
 
 /* BIC TCP variables */
@@ -211,6 +219,7 @@ struct bic {
 	u32	epoch_start;	/* beginning of an epoch */
 #define ACK_RATIO_SHIFT	4
 	u32	delayed_ack;	/* estimate the ratio of Packets/ACKs << 4 */
+	u32	cwnd;
 };
 
 /* HTCP variables */

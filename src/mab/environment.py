@@ -17,6 +17,8 @@ import yaml
 from utilities.logger import Logger
 from comm.comm import ACTION_FLAG
 
+from collections import deque
+
 import math
 
 
@@ -32,9 +34,6 @@ class MabEnvironment(gym.Env):
         # Load the configuration
         self.config = config
 
-        # Kernel state
-        self.last_delivered = 0
-
         # Define action and observation space
         self.proto_config = utils.parse_protocols_config()
         if policies:
@@ -42,7 +41,7 @@ class MabEnvironment(gym.Env):
         else:
             self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
         self.width_state = 41
-        self.action_space = spaces.Discrete(config['num_actions'])
+        self.action_space = spaces.Discrete(len(policies))
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(10, self.width_state), dtype=int) # Check the height (None)
 
@@ -52,21 +51,13 @@ class MabEnvironment(gym.Env):
         self.global_step_counter = 0
 
         # Reward
-        self.rws = dict() # list of rws for each step
         self.curr_reward = 0
-        self.last_rtt = 0
-        self.min_thr = 0
-        self.min_rtt = sys.maxsize
-        self.last_cwnd = 0
         self.epoch = 0
         self.allow_save = False
         self.step_wait = config['step_wait_seconds']
         self.zeta = config['reward']['zeta']
         self.kappa = config['reward']['kappa']
-        self.mss = None
-        self.max_bw = 0.0
-        self.num_features_tmp = self.width_state
-        self.cwnd = []
+        self.rw_win = deque(maxlen=1000)
 
         # Feature extractor
         self.feature_settings = utils.parse_features_config()
@@ -74,7 +65,8 @@ class MabEnvironment(gym.Env):
         self.stat_features= self.feature_settings['train_stat_features']
         self.non_stat_features = self.feature_settings['train_non_stat_features']
         self.window_sizes = self.feature_settings['window_sizes']
-        self.training_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
+        # self.training_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
+        self.training_features = self.non_stat_features
         self.feat_extractor = FeatureExtractor(self.stat_features, self.window_sizes) # window_sizes=(10, 200, 1000)
 
         # Netlink communicator
@@ -141,23 +133,25 @@ class MabEnvironment(gym.Env):
         print(f'Collected data: {collected_data}')
 
         # Compute statistics for the features
-        self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
-        self.feat_extractor.compute_statistics()
-        feat_statistics = self.feat_extractor.get_statistics()
+        # self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
+        # self.feat_extractor.compute_statistics()
+        # feat_statistics = self.feat_extractor.get_statistics()
     
-        for size in self.window_sizes:
-            for feature in self.stat_features:
-                _feat_averages.append(feat_statistics[size]['avg'][feature])
-                _feat_min.append(feat_statistics[size]['min'][feature])
-                _feat_max.append(feat_statistics[size]['max'][feature])
+        # for size in self.window_sizes:
+        #     for feature in self.stat_features:
+        #         _feat_averages.append(feat_statistics[size]['avg'][feature])
+        #         _feat_min.append(feat_statistics[size]['min'][feature])
+        #         _feat_max.append(feat_statistics[size]['max'][feature])
 
-        feat_averages = np.array(_feat_averages)
-        feat_min = np.array(_feat_min)
-        feat_max = np.array(_feat_max)
+        # feat_averages = np.array(_feat_averages)
+        # feat_min = np.array(_feat_min)
+        # feat_max = np.array(_feat_max)
 
         # Store the kernel feature to append to the state
-        curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
-                                feat_averages, feat_min, feat_max))
+        # curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
+        #                         feat_averages, feat_min, feat_max))
+        # Simple case: only non stat features
+        curr_kernel_features = np.array([val for feat, val in collected_data.items() if feat in self.non_stat_features])
         curr_timestamp = collected_data['now']
         num_msg = 1
         start = time.time()
@@ -180,19 +174,19 @@ class MabEnvironment(gym.Env):
                 collected_data[key] = int(collected_data[key])
             
             # Compute statistics for the features
-            self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
-            self.feat_extractor.compute_statistics()
-            feat_statistics = self.feat_extractor.get_statistics()
+            # self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
+            # self.feat_extractor.compute_statistics()
+            # feat_statistics = self.feat_extractor.get_statistics()
         
-            for size in self.window_sizes:
-                for feature in self.stat_features:
-                    _feat_averages.append(feat_statistics[size]['avg'][feature])
-                    _feat_min.append(feat_statistics[size]['min'][feature])
-                    _feat_max.append(feat_statistics[size]['max'][feature])
+            # for size in self.window_sizes:
+            #     for feature in self.stat_features:
+            #         _feat_averages.append(feat_statistics[size]['avg'][feature])
+            #         _feat_min.append(feat_statistics[size]['min'][feature])
+            #         _feat_max.append(feat_statistics[size]['max'][feature])
 
-            feat_averages = np.array(_feat_averages)
-            feat_min = np.array(_feat_min)
-            feat_max = np.array(_feat_max)
+            # feat_averages = np.array(_feat_averages)
+            # feat_min = np.array(_feat_min)
+            # feat_max = np.array(_feat_max)
 
             if collected_data['now'] != curr_timestamp:
                 curr_kernel_features = np.divide(curr_kernel_features, num_msg)
@@ -205,10 +199,10 @@ class MabEnvironment(gym.Env):
                     # log_tmp = np.vstack((log_tmp, np.array(log_kernel_features).reshape(1, -1)))
 
                 # Store the kernel feature to append to the state
-                curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
-                                feat_averages, feat_min, feat_max))
-                # log_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.feature_names],
+                # curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
                 #                 feat_averages, feat_min, feat_max))
+                
+                curr_kernel_features = np.array([val for feat, val in collected_data.items() if feat in self.non_stat_features])
                 
                 curr_timestamp = collected_data['now']
 
@@ -218,13 +212,12 @@ class MabEnvironment(gym.Env):
 
             else:
                 # sum new reading to existing readings
-                curr_kernel_features = np.add(curr_kernel_features,
-                            np.concatenate((
-                                [val for feat, val in collected_data.items() if feat in self.non_stat_features], 
-                                feat_averages, feat_min, feat_max)))
-                # log_kernel_features = np.add(log_kernel_features,
-                #             np.concatenate(([val for feat, val in collected_data.items() if feat in self.feature_names],
+                # curr_kernel_features = np.add(curr_kernel_features,
+                #             np.concatenate((
+                #                 [val for feat, val in collected_data.items() if feat in self.non_stat_features], 
                 #                 feat_averages, feat_min, feat_max)))
+                curr_kernel_features = np.add(curr_kernel_features,
+                                              [val for feat, val in collected_data.items() if feat in self.non_stat_features])
                 num_msg += 1
 
         # Kernel features for callbacks
@@ -236,32 +229,30 @@ class MabEnvironment(gym.Env):
             tmp_collected_data = {name: value for name, value in zip(self.training_features, k_features)}
             rw = self.compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['srtt'])
             rws.append(rw)
-            binary_rw = 0 if rw <= self.curr_reward else 1
-            binary_rws.append(binary_rw)
+            # binary_rw = 0 if rw <= self.curr_reward else 1
+            # binary_rws.append(binary_rw)
             if self.allow_save:
                 self.logger.log([self.epoch, self.step_counter] + [val for val in k_features] + [rw])
 
-        # if self.allow_save:
-        #     for k_log_features, rw in zip(log_tmp, rws):
-        #         # Log the features
-        #         self.logger.log([self.epoch, self.step_counter] + [val for val in k_log_features] + [rw])
-
-        # TODO: mean of rewards; could we do better?
-        # The following aggregated value refers to the mean of the rewards computed during step_wait (switching time) within the step
-        # self.curr_reward = np.mean(rws)
         self.curr_state = self.features
-        return (self.curr_state, collected_data['crt_proto_id'], rws, binary_rws)
+        return (self.curr_state, collected_data['crt_proto_id'], rws)
 
     
     def compute_reward(self, thr: float, loss_rate: float, rtt: float):
         # TODO: this is single-flow reward, no friendliness. Multi-flow scenario to be considered.
         reward = pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6)
-        # print("[DEBUG] Reward: ", round(reward, 2), "Thruput (Mbps): ", round(thr, 2), "Loss rate: ", round(loss_rate, 2), "RTT (ms): ", round(rtt, 2))
+        self.rw_win.append(reward)
+        min_rw = min(self.rw_win)
+        max_rw = max(self.rw_win)
+        if max_rw - min_rw != 0:
+            reward = (reward - min_rw) / (max_rw - min_rw)
+        else:
+            reward = 0
         return reward
 
     def step(self, action):
         self._change_cca(int(action))
-        observation, action, rewards, binary_rewards = self._get_state()
+        observation, action, rewards = self._get_state()
 
         done = False if self.step_counter != self.steps_per_episode-1 else True
         self.step_counter = (self.step_counter+1) % self.steps_per_episode
@@ -269,14 +260,14 @@ class MabEnvironment(gym.Env):
 
         avg_reward = round(np.mean(rewards), 4)
         self.curr_reward = avg_reward
-        avg_binary_reward = np.bincount(binary_rewards).argmax()
+        # avg_binary_reward = np.bincount(binary_rewards).argmax()
 
-        info = {'avg_reward': avg_reward}
-        data = {'rewards': binary_rewards, 
+        info = {'avg_reward': avg_reward} 
+        data = {'rewards': rewards, # Here we replace the binary rewards with the actual rewards for TS
                 "features": self.features, 
                 'obs': observation}
 
-        print(f'\nStep: {self.step_counter} Sent Action: {action} Epoch: {self.epoch} | Reward: {avg_reward} ({np.mean(avg_binary_reward)})')
+        print(f'\nStep: {self.step_counter} Sent Action: {action} Epoch: {self.epoch} | Reward: {avg_reward}')
 
         counter = self.step_counter if self.step_counter != 0 else self.steps_per_episode
 
@@ -292,7 +283,7 @@ class MabEnvironment(gym.Env):
     def reset(self):
         self._init_communication()
         self._change_cca(0)
-        observation, _, _, _ = self._get_state()
+        observation, _, _ = self._get_state()
         self.epoch += 1
 
         data = {'obs': observation}

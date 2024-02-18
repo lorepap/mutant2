@@ -24,7 +24,7 @@ class KernelRequest(threading.Thread):
                     break
                 
                 # Use select with a timeout to implement a timer
-                readable, _, _ = select.select([self.comm.socket], [], [], 10.0)  # Set timeout to 5 seconds
+                readable, _, _ = select.select([self.comm.socket], [], [], 20) 
 
                 if not readable:
                     # No data received within the timeout period

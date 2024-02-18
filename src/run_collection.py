@@ -18,7 +18,7 @@ def run(args):
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--proto", type=str, default="cubic", help="Protocol to run for data collection. \
-        Supported protocols: cubic, bbr, vegas, veno, westwood, hybla, cdg, illinois, bic, highspeed, htcp")
+        Supported protocols: cubic, bbr, vegas, veno, westwood, hybla, cdg, illinois, bic, highspeed, htcp, base")
     parser.add_argument("--time", type=float, default=10, help="Experiment running time (s)")
     parser.add_argument("--rtt", type=float, default=20, help="RTT (ms)")
     parser.add_argument("--bw", type=float, default=12, help="Bandwidth (Mbps)")

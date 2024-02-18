@@ -6,6 +6,7 @@ import numpy as np
 from collection.kernel_comm import CollectionCommManager
 from comm.kernel_thread import KernelRequest
 from utilities import utils
+from collections import deque
 
 
 # Protocol mapping
@@ -22,6 +23,7 @@ PROTOCOL_MAPPING = {
     "htcp": 9,
     "highspeed": 10,
     "illinois": 11,
+    "base": 12,
 }
 
 
@@ -54,6 +56,8 @@ class Collector():
         self.num_fields_kernel = self.sys_settings['num_fields_kernel']
         self.initiated = False
         self.prev_delivered = None
+        self.rw_win = deque(maxlen=100)
+
         self._init_communication()
 
     def setup_communication(self):
@@ -138,8 +142,17 @@ class Collector():
                 collected_data[feature].append(data_dict[feature])
 
             reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']),  self.sys_settings['reward']['kappa']) / (data_dict['srtt']*10**-6)
+            
+            self.rw_win.append(reward)
+            min_rw = min(self.rw_win)
+            max_rw = max(self.rw_win)
+            if max_rw - min_rw != 0:
+                reward = (reward - min_rw) / (max_rw - min_rw)
+            else:
+                reward = 0
+            
             data_dict['reward'] = reward
-            # print('Reward:', reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
+            print('Reward:', reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
             # collected_data['reward'].append(reward)
             
             # print('\n')

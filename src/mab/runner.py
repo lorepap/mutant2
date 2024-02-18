@@ -37,8 +37,14 @@ class MabRunner():
         
         # Set up communication with kernel
         self.cm = CommManager(log_dir_name='log/iperf', rtt=min_rtt, bw=bw, bdp_mult=bdp_mult) #iperf_dir, time
-        self.nchoices = config['num_actions'] if not policies else len(policies)
-        self.lr = config['lr']
+
+        if not policies:
+            self.proto_config = utils.parse_protocols_config()
+            self.policies = list(self.proto_config.keys())
+
+        self.nchoices = len(self.policies)
+        if 'lr' in config:
+            self.lr = config['lr']
         self.moderator = Moderator()
         self.num_features = config['num_features']
 
@@ -52,13 +58,13 @@ class MabRunner():
         self.num_fields_kernel = config['num_fields_kernel']
         self.training_steps = config['train_episodes'] * self.steps_per_episode
 
-        self.model = MabAgent(self.nchoices, self.moderator)
+        self.agent = MabAgent(self.nchoices, self.moderator)
         
         # TODO: checkpoint filepath to be changed for a better naming convention
-        self.model.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.timestamp}')
+        self.agent.set_model_name(name=f'mab.{self.nchoices}actions.{self.training_steps}steps.{self.timestamp}')
         if not checkpoint_filepath:
             self.checkpoint_filepath = os.path.join(
-                context.entry_dir, self.log_dir, 'checkpoint', f'{self.model_path}.{self.model.get_model_name()}')
+                context.entry_dir, self.log_dir, 'checkpoint', f'{self.model_path}.{self.agent.get_model_name()}')
 
         self.environment = MabEnvironment(self.cm, self.policies, config)
         self.environment.allow_save = log
@@ -67,7 +73,7 @@ class MabRunner():
 
         # Settings
         if self.policies:
-            map_proto = {p: action for action, p in zip(self.environment.map_proto.keys(), policies)}
+            map_proto = {p: action for action, p in zip(self.environment.map_proto.keys(), self.policies)}
         else:
             map_proto = self.environment.map_proto
         self.settings = {'timestamp': self.timestamp, **config, 'action_mapping': map_proto, **self.environment.feature_settings}
@@ -101,14 +107,15 @@ class MabRunner():
             log_file_path=os.path.join(
                 context.entry_dir, 
                 self.history_dir,
-                f'{self.model.get_model_name()}.json'
+                f'{self.agent.get_model_name()}.json'
             )
         )
 
         start = time.time()
 
-        self.model.compile()
-        self.train_res = self.model.fit(self.environment, nb_steps=self.training_steps, 
+        self.agent.compile()
+        print(f"Training model {self.agent.get_model_name()} with {self.nchoices} arms...")
+        self.train_res = self.agent.fit(self.environment, nb_steps=self.training_steps, 
                     callbacks=[cb],
             visualize=False, verbose=2)
 
@@ -128,13 +135,13 @@ class MabRunner():
         cb: TrainingCallback = TrainingCallback(
             log_file_path=os.path.join(
             context.entry_dir, 
-            f'log/mab/history/debug_{self.model.get_model_name()}.json'
+            f'log/mab/history/debug_{self.agent.get_model_name()}.json'
             )
         )
         
         self.environment.enable_log_traces()
         
-        self.model.test(self.environment,
+        self.agent.test(self.environment,
                         nb_episodes=episodes, 
                         visualize=False, 
                         callbacks=[cb])
@@ -146,7 +153,7 @@ class MabRunner():
         path = os.path.join(
             context.entry_dir, 
             self.history_dir,
-            f'episode_history_{self.model.get_model_name()}.json'
+            f'episode_history_{self.agent.get_model_name()}.json'
             )
 
         import pandas as pd
@@ -155,8 +162,8 @@ class MabRunner():
     
     def save_model(self, reset_model: bool = True) -> str:
         path = os.path.join(
-            context.entry_dir, f'log/mab/model/{self.model.get_model_name()}.h5')
-        self.model.save_weights(path, True)
+            context.entry_dir, f'log/mab/model/{self.agent.get_model_name()}.h5')
+        self.agent.save_weights(path, True)
 
         print(f"Saving model...")
         print("[DEBUG] model weights saved successfully in", path)

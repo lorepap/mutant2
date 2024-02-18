@@ -4,17 +4,17 @@ import warnings
 from copy import deepcopy
 import pickle
 from sklearn.linear_model import SGDClassifier
-from contextualbandits.online import BootstrappedUCB, _BasePolicy
+from contextualbandits.online import _BasePolicy, LinTS
 
 import numpy as np
 import tensorflow as tf
-from contextualbandits.online import _BasePolicy
 from utilities import utils
 from rl.core import Agent
 from tensorflow.keras.callbacks import History
 from mab.moderator import Moderator
 import statistics
 
+from collections import Counter
 
 from rl.callbacks import (
     CallbackList,
@@ -31,7 +31,7 @@ class MabAgent(Agent):
         # TODO: build id string for model
         self.moderator = moderator
         self.nchoices = nchoices
-        self.base_algorithm = SGDClassifier(loss='log', max_iter=1000, tol=1e-3, shuffle=False, verbose=0)
+        # self.base_algorithm = SGDClassifier(loss='log', max_iter=1000, tol=1e-3, shuffle=False, verbose=0)
         self.model = self.get_policy()
         self.prev_action = 0
 
@@ -40,11 +40,9 @@ class MabAgent(Agent):
 
     def get_policy(self) -> _BasePolicy:
 
-        beta_prior = ((3./self.nchoices, 4.), 2)
-
-        return BootstrappedUCB(deepcopy(self.base_algorithm), nchoices=self.nchoices, 
-                               beta_prior=beta_prior, batch_train=True)
-
+        beta_prior = ((1, 1), 5)
+        p = LinTS(nchoices=self.nchoices, beta_prior='auto', v_sq=0.25, method='chol')
+        return p
 
     def load_weights(self, filepath) -> None:
 
@@ -69,21 +67,29 @@ class MabAgent(Agent):
             return self.prev_action
 
         # Select an action.
-        actions = self.model.predict(observation['obs']).astype('uint8')
-        N = len(actions)
-        # print("[DEBUG] length actions:", N)
-
-        # print(f'Observation: {observation["obs"].shape}')
-        # print("[DEBUG] actions: ", actions)
-
+        actions = self.model.predict(observation['obs'])
+    
         # Book-keeping.
         self.recent_observation = observation
-        self.actions = actions
-        # self.counter += 1
-        self.prev_action = actions[N-1]
+        
+        # select the action with the highest occurrence
+        action_counts = Counter(actions)
+        print("[DEBUG] action_counts: ", action_counts)
+
+        # Get the action that occurs the most
+        action = action_counts.most_common(1)[0][0]
+        # action = actions[len(actions) - 1]
+
+        # The action we will use later for the backward pass, is an array of n_samples, where
+        # the selected action is repeated.
+        # This little trick will allow the model to understand that the observed environment is related to 
+        # the most occurring action selected during the forward pass.
+        self.actions = [action] * observation['obs'].shape[0]
+        
+        self.prev_action = action
 
         # Last predicted action
-        action = actions[N-1]
+        # action = actions[N-1]
 
         return action
 
@@ -96,6 +102,10 @@ class MabAgent(Agent):
 
         N = len(self.actions)
         # print("[DEBUG] N: ", N)
+
+        # Here, since we want data in batches, we pull the rewards from the observation
+        # Note that we could customize the fit method in core.py to handle the rewards as an array
+        # The reward in the fit function (output of step) is an average - can be modified since we don't use it
         self.model.partial_fit(
             self.recent_observation['obs'],
             np.array(self.actions),

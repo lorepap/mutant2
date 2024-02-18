@@ -1,9 +1,10 @@
-train_episodes: 30
-steps_per_episode: 200
+train_episodes: 10
+steps_per_episode: 100
 num_features: 42
 num_fields_kernel: 14
-lr: 1e-3
-step_wait_seconds: 2
+# lr: 1e-3
+algorithm: 'LinTS'
+step_wait_seconds: 0.5
 min_rtt: 20 # ms
 bw: 12 # Mbps
 bdp_mult: 1

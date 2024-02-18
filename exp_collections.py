@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument("--time", type=str, default="30", help="Experiment running time (s)")
+parser.add_argument("--proto", type=str, default=None, help="Protocol to use")
 args = parser.parse_args()
 time = args.time
 
@@ -17,20 +18,21 @@ experiments = [
     {"name": "Challenging_Network_2", "bw": 12, "rtt": 30, "bdp_mult": 0.5},
 ]
 
+cmd = ["src/run_collection.py", "--proto", args.proto] if args.proto is not None else ["src/collect.py"]
+
 # Iterate over experiments and run each one
 for experiment in experiments:
-    command = [
-        "python",
-        "src/collect.py",
+    command = ["python"] + cmd + \
+        [ 
         "--time",
-        time,
+        time, 
         "--bdp_mult",
         str(experiment["bdp_mult"]),
         "--rtt",
         str(experiment["rtt"]),
         "--bw",
         str(experiment["bw"]),
-    ]
+        ]
     
     print(f"\nRunning Experiment: {experiment['name']}")
     subprocess.run(command)

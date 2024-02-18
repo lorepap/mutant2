@@ -90,38 +90,17 @@ class SwitchingTestRunner():
         collected_data = {}
         cca_list = [CUBIC, HYBLA, BBR, WESTWOOD, VENO, VEGAS, YEAH, CDG, BIC, HTCP, HIGH_SPEED, ILLINOIS]
         current_cca_index = 0
-        while True:
+        step_time = 1 # waiting time in seconds between each switch
+        start_exp = time.time()
+        while time.time() - start_exp < self.running_time:
+            start = time.time()
             # Every time we send a random protocol
             current_cca = random.choice(cca_list)
             print(f"Switch to {current_cca}")
             msg = self.cm.netlink_communicator.create_netlink_msg(
                 'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=current_cca)
             self.cm.netlink_communicator.send_msg(msg)
-
-            # Update the index for the next iteration
-            # current_cca_index = (current_cca_index + 1) % len(cca_list)
-
-            # Sleep 2 seconds between each switch
-            time.sleep(3)
-
-            # data = self._read_data()
-
-            # collected_data = {
-            #     'now': data[0],
-            #     'cwnd': data[1],
-            #     'rtt': data[2],
-            #     'rtt_dev': data[3],
-            #     'rtt_min': data[4],  # Adjusted index for rtt_min
-            #     'MSS': data[5],      # Adjusted index for MSS
-            #     'delivered': data[6],
-            #     'lost': data[7],
-            #     'in_flight': data[8],
-            #     'retransmitted': data[9],
-            #     'protocol_ID': data[10]  # Adjusted index for protocol_ID
-            # }
-
-            # Every time we send a different action: CUBIC or HYBLA
-            # print("Switch to HYBLA")
-            # msg = self.cm.netlink_communicator.create_netlink_msg(
-            # 'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=HYBLA)
-            # print("Collected data:", ", ".join(f"{key}: {value}" for key, value in collected_data.items()))
+            while time.time() - start < step_time:
+                data = self._read_data()
+                # print("Data:", data)
+                print("Data:", ", ".join(str(x) for x in data))

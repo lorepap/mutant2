@@ -19,7 +19,7 @@ END_COMM_FLAG = 0
 # Base class for Trainer
 class CommManager():
 
-    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=12, bdp_mult=10) -> None:
+    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=12, bdp_mult=1) -> None:
         
         self.time = client_time if client_time else 86400
         self.log_dir = log_dir_name
