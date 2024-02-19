@@ -768,6 +768,8 @@ void mutant_switch_congestion_control(void) {
 static void send_info(struct mutant_info *info) {
     char msg[MAX_PAYLOAD - 1];
 
+    // printk('[DEBUG] Thruput:', info->thruput);
+
     snprintf(msg, MAX_PAYLOAD - 1,
     "%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u;%u",
     info->now, info->snd_cwnd, info->rtt_us, info->srtt_us, info->mdev_us, 
@@ -811,8 +813,10 @@ static void send_net_params(struct tcp_sock *tp, struct sock *sk, int socketId)
     info.thruput = thruput;  
     info.loss_rate = loss_rate;
 
-    // Send feature values
-    if (info.rtt_us)
+    // printk("Thruput = %u", info.thruput);
+
+    // Send feature values (rtt min >= 10ms)
+    if (info.rtt_us>10000)
         send_info(&info);
 }
 

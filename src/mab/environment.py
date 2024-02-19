@@ -34,17 +34,6 @@ class MabEnvironment(gym.Env):
         # Load the configuration
         self.config = config
 
-        # Define action and observation space
-        self.proto_config = utils.parse_protocols_config()
-        if policies:
-            self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(policies)} # action: id mapping for subset of protocols
-        else:
-            self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
-        self.width_state = 41
-        self.action_space = spaces.Discrete(len(policies))
-        self.observation_space = spaces.Box(
-            low=0, high=np.inf, shape=(10, self.width_state), dtype=int) # Check the height (None)
-
         # Step counter
         self.steps_per_episode = config['steps_per_episode']
         self.step_counter = 0
@@ -57,7 +46,7 @@ class MabEnvironment(gym.Env):
         self.step_wait = config['step_wait_seconds']
         self.zeta = config['reward']['zeta']
         self.kappa = config['reward']['kappa']
-        self.rw_win = deque(maxlen=1000)
+        # self.rw_win = deque(maxlen=500)
 
         # Feature extractor
         self.feature_settings = utils.parse_features_config()
@@ -69,6 +58,19 @@ class MabEnvironment(gym.Env):
         self.training_features = self.non_stat_features
         self.feat_extractor = FeatureExtractor(self.stat_features, self.window_sizes) # window_sizes=(10, 200, 1000)
 
+        # Define action and observation space
+        self.proto_config = utils.parse_protocols_config()
+        if policies:
+            self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(policies)} # action: id mapping for subset of protocols
+        else:
+            self.map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
+        self.width_state = len(self.non_stat_features) #  + len(self.stat_features) * len(self.window_sizes) + 3
+        self.action_space = spaces.Discrete(len(policies))
+        max_samples = int(self.step_wait / 0.01) # 0.1 is the sampling frequency of the kernel
+        self.observation_space = spaces.Box(
+            low=0, high=np.inf, shape=(max_samples, self.width_state), dtype=int) # Check the height (None)
+
+
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
         self.num_fields_kernel = config['num_fields_kernel']
@@ -79,7 +81,7 @@ class MabEnvironment(gym.Env):
         os.makedirs(os.path.dirname(csv_file), exist_ok=True)
         self.log_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
         self.logger = Logger(csv_file=csv_file, 
-                    columns=['epoch', 'step']+self.log_features+['reward'])
+                    columns=['epoch', 'step']+self.log_features+['crt_protocol_id', 'reward'])
         # self.log_traces = ""
         self.allow_save = False
         self.initiated = False
@@ -229,10 +231,8 @@ class MabEnvironment(gym.Env):
             tmp_collected_data = {name: value for name, value in zip(self.training_features, k_features)}
             rw = self.compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['srtt'])
             rws.append(rw)
-            # binary_rw = 0 if rw <= self.curr_reward else 1
-            # binary_rws.append(binary_rw)
             if self.allow_save:
-                self.logger.log([self.epoch, self.step_counter] + [val for val in k_features] + [rw])
+                self.logger.log([self.epoch, self.step_counter] + [val for val in k_features] + [collected_data['crt_proto_id'], rw])
 
         self.curr_state = self.features
         return (self.curr_state, collected_data['crt_proto_id'], rws)
@@ -240,14 +240,19 @@ class MabEnvironment(gym.Env):
     
     def compute_reward(self, thr: float, loss_rate: float, rtt: float):
         # TODO: this is single-flow reward, no friendliness. Multi-flow scenario to be considered.
-        reward = pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6)
-        self.rw_win.append(reward)
-        min_rw = min(self.rw_win)
-        max_rw = max(self.rw_win)
-        if max_rw - min_rw != 0:
-            reward = (reward - min_rw) / (max_rw - min_rw)
-        else:
-            reward = 0
+        reward = pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6) # rtt us -> ms
+        # self.rw_win.append(reward)
+        # min_rw = min(self.rw_win)
+        # max_rw = max(self.rw_win)
+        # We test the reward in the case we know the min rtt and the bandwidth
+        # The best reward possible is when the thruput is equal to the bandwidth, loss rate is 0 and rtt is the min rtt
+        max_rw = pow(self.config['bw'], self.kappa) / (self.config['min_rtt']*10**-3)
+        # The best rewards are the closest to 1
+        reward = reward / max_rw 
+        # if max_rw - min_rw != 0:
+        #     reward = (reward - min_rw) / (max_rw - min_rw)
+        # else:
+        #     reward = 0
         return reward
 
     def step(self, action):

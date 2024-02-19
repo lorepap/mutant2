@@ -4,7 +4,7 @@ import warnings
 from copy import deepcopy
 import pickle
 from sklearn.linear_model import SGDClassifier
-from contextualbandits.online import _BasePolicy, LinTS
+from contextualbandits.online import _BasePolicy, LinTS, LinUCB
 
 import numpy as np
 import tensorflow as tf
@@ -24,6 +24,8 @@ from rl.callbacks import (
     Visualizer
 )
 
+protocols = utils.parse_protocols_config()
+
 class MabAgent(Agent):
 
     def __init__(self, nchoices, moderator=None, **kwargs):
@@ -40,8 +42,8 @@ class MabAgent(Agent):
 
     def get_policy(self) -> _BasePolicy:
 
-        beta_prior = ((1, 1), 5)
-        p = LinTS(nchoices=self.nchoices, beta_prior='auto', v_sq=0.25, method='chol')
+        beta_prior = ((2./self.nchoices, 2), 500)
+        p = LinTS(nchoices=self.nchoices, beta_prior=beta_prior, v_sq=0.2, method='chol')
         return p
 
     def load_weights(self, filepath) -> None:
@@ -67,17 +69,22 @@ class MabAgent(Agent):
             return self.prev_action
 
         # Select an action.
-        actions = self.model.predict(observation['obs'])
+        # We're gonna try to average the observations
+        # The model will try to predict one single action given the average observation
+
+        avg_obs = np.mean(observation['obs'], axis=0)
+        action = self.model.predict(avg_obs)
+        action = action[0]
     
         # Book-keeping.
         self.recent_observation = observation
         
         # select the action with the highest occurrence
-        action_counts = Counter(actions)
-        print("[DEBUG] action_counts: ", action_counts)
+        # action_counts = Counter(actions)
+        # print("[DEBUG] action_counts: ", action_counts)
 
         # Get the action that occurs the most
-        action = action_counts.most_common(1)[0][0]
+        # action = action_counts.most_common(1)[0][0]
         # action = actions[len(actions) - 1]
 
         # The action we will use later for the backward pass, is an array of n_samples, where
@@ -85,8 +92,10 @@ class MabAgent(Agent):
         # This little trick will allow the model to understand that the observed environment is related to 
         # the most occurring action selected during the forward pass.
         self.actions = [action] * observation['obs'].shape[0]
-        
         self.prev_action = action
+
+        
+        print("[DEBUG] Action predicted:", action, "| Batch size:", len(observation['obs']))
 
         # Last predicted action
         # action = actions[N-1]

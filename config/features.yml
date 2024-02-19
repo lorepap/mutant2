@@ -26,6 +26,7 @@ train_stat_features:
 
 # replace delivery rate with its max
 train_non_stat_features:
+  - cwnd
   - srtt
   - rtt_dev
   - lost

@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from tf_agents.specs import array_spec
 from tf_environment import BanditPyEnvironment
 from tf_agents.specs import array_spec

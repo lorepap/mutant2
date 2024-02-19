@@ -24,6 +24,7 @@ PROTOCOL_MAPPING = {
     "highspeed": 10,
     "illinois": 11,
     "base": 12,
+    "base2": 13
 }
 
 
@@ -125,12 +126,14 @@ class Collector():
 
         data_dict = {}
         collected_data = {}
-        feature_names = self.feature_settings['kernel_info']
+        feature_names = self.feature_settings['kernel_info'] + ['reward']
         collected_data = {feature: [] for feature in feature_names}
         collected_data['reward'] = []
         start = time.time()
         self.set_protocol() # Communicate with kernel to set the protocol
         print(f"Running {self.protocol} for {self.running_time} seconds...")
+
+        max_rw = pow(self.bw, self.sys_settings['reward']['kappa']) / (self.rtt*10**-3)
 
         while time.time()-start < self.running_time:
             data = self._read_data()
@@ -138,21 +141,19 @@ class Collector():
             data_dict['loss_rate'] = data_dict['loss_rate'] / 100
             data_dict['thruput'] = data_dict['thruput'] / 1e6 # Convert to Mbps
 
-            for feature in feature_names:
-                collected_data[feature].append(data_dict[feature])
-
             reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']),  self.sys_settings['reward']['kappa']) / (data_dict['srtt']*10**-6)
             
-            self.rw_win.append(reward)
-            min_rw = min(self.rw_win)
-            max_rw = max(self.rw_win)
-            if max_rw - min_rw != 0:
-                reward = (reward - min_rw) / (max_rw - min_rw)
-            else:
-                reward = 0
+            # self.rw_win.append(reward)
+            # min_rw = min(self.rw_win)
+            # max_rw = max(self.rw_win)
+            # if max_rw - min_rw != 0:
+            #     reward = (reward - min_rw) / (max_rw - min_rw)
+            # else:
+            #     reward = 0
+            normalized_reward = reward / max_rw
             
-            data_dict['reward'] = reward
-            print('Reward:', reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
+            data_dict['reward'] = normalized_reward
+            print('Reward:', normalized_reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
             # collected_data['reward'].append(reward)
             
             # print('\n')
@@ -166,9 +167,12 @@ class Collector():
 
             # Save collected data to csv file
             self.write_data(data_dict, path_to_file)
+
+            for feature in feature_names:
+                collected_data[feature].append(data_dict[feature])
         
         print(f"Collection of {self.protocol} completed.")
-        print(f"Avg thr: {round(np.mean(collected_data['thruput']), 2)} Mbps, \
-              Avg loss rate: {round(np.mean(collected_data['loss_rate']), 2)}, \
-              Avg RTT: {round(np.mean(collected_data['rtt']), 2)} ms, \
-              Avg reward: {round(np.mean(collected_data['reward']), 2)}")
+        print(f"Avg thr: {round(np.mean(collected_data['thruput']), 4)} Mbps, \
+              Avg loss rate: {round(np.mean(collected_data['loss_rate']), 4)}, \
+              Avg RTT: {round(np.mean(collected_data['rtt'])*10**-3, 4)}ms, \
+              Avg reward: {round(np.mean(collected_data['reward']), 4)}")
