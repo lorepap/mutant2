@@ -1,5 +1,4 @@
-train_episodes: 10
-steps_per_episode: 200
+num_steps: 1000
 num_features: 42
 num_fields_kernel: 14
 # lr: 1e-3
