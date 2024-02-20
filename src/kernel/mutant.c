@@ -19,6 +19,10 @@ static u32 prev_proto_id = CUBIC;
 static bool switching_flag = false;
 struct mutant_info info;
 
+// Debugging variables
+u64 fail_cnt = 0;
+u64 success_cnt = 0;
+
 u64 thruput = 0;
 u64 loss_rate = 0.0;
 
@@ -106,16 +110,21 @@ static void send_msg(char *message, int socketId)
 
     if (messageSentReponseCode < 0)
     {
-        printk(KERN_ERR "Mutant | %s: Error while sending message | (PID = %d) | (Error = %d) | (Count = %d)\n", __FUNCTION__, socketId, messageSentReponseCode, retryCounter);
+        fail_cnt++;
+        printk(KERN_ERR "Mutant | %s: Error while sending message | (PID = %d) | (Error = %d) | (Fail counter = %d)\n", __FUNCTION__, socketId, messageSentReponseCode, fail_cnt);
     }
-    // else
-    // {
-    //     printk("Mutant | %s: Correctly sent message to app layer | PID = %d | Message: %s", __FUNCTION__, socketId, message);
-    // }
+    else
+    {
+        success_cnt++;
+        printk("Mutant | %s: Correctly sent message to app layer | PID = %d | Success counter: %d", __FUNCTION__, socketId, success_cnt);
+    }
 }
 
 static void start_connection(struct nlmsghdr *nlh)
 {
+    success_cnt = 0;
+    fail_cnt = 0;
+    prev_proto_id = CUBIC;
 
     // Initialize saved_states
     init_saved_states();

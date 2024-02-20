@@ -65,6 +65,8 @@ class CommManager():
         if res != 0:
             raise Exception('Unable to init kernel\n')
         
+        print("Communication initiated")
+        
     def start_server(self, server_log_dir='log/iperf'):
         base_path = os.path.join(context.entry_dir, server_log_dir)
         filename = f'server.log'
@@ -114,15 +116,9 @@ class CommManager():
 
         msg = self.netlink_communicator.create_netlink_msg(
             'INIT_COMMUNICATION', msg_flags=INIT_COMM_FLAG)
- 
         self.netlink_communicator.send_msg(msg)
 
         print("Communication initiated")
-
-        # total_choices, total_prots = utils.get_number_of_actions(
-        #     self.netlink_communicator)
-
-        # print(f'\n\n----- Number of protocols available in kernel is {total_choices} ----- \n\n')
 
     def close_kernel_communication(self) -> None:
 
@@ -137,6 +133,3 @@ class CommManager():
     def stop_iperf_communication(self):
         # Client stops by itself?
         self.server.stop()
-
-    def create_netlink_msg(self, data, msg_type=0, msg_flags=0, msg_seq=0, msg_pid=os.getpid()):
-        self.netlink_communicator.create_netlink_msg(data, msg_type, msg_flags, msg_seq, msg_pid=os.getpid())

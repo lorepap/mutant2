@@ -27,12 +27,13 @@ train_stat_features:
 # replace delivery rate with its max
 train_non_stat_features:
   - cwnd
+  - rtt
   - srtt
   - rtt_dev
   - lost
   - in_flight
   - delivery_rate
-  - prev_proto_id
+  - crt_proto_id
   - thruput
   - loss_rate
 
