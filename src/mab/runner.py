@@ -93,7 +93,7 @@ class MabRunner():
         
         # TF Environment
         self.batch_size = 1
-        env = MabEnvironment(observation_spec, action_spec, self.policies_id, batch_size=self.batch_size, normalize_rw=False)
+        env = MabEnvironment(observation_spec, action_spec, self.policies_id, batch_size=self.batch_size, normalize_rw=False, logger=True)
         self.environment: MabEnvironment = tf_py_environment.TFPyEnvironment(env)
         self.environment.allow_save = log
         self.now = time.time()
@@ -166,7 +166,13 @@ class MabRunner():
             self.agent.train(replay_buffer.gather_all())
             # self.agent.train(experience)
             # step = next_step
-            replay_buffer.clear()        
+            replay_buffer.clear()
+        
+        self.save_figs(self)
+
+    def save_figs(self):
+        exp = {'bw': self.bw, 'rtt': self.min_rtt, 'bdp_mult': self.bdp_mult}
+        plot_training_reward_single(self.timestamp, exp)
 
     def compute_optimal_reward(observation):
        pass
@@ -205,28 +211,6 @@ class MabRunner():
                                     step_type=tf.expand_dims(initial_step.step_type, 0),
                                     next_step_type=tf.expand_dims(final_step.step_type, 0))
 
-
-
-
-
-    # def save_history(self) -> None:
-    #     path = os.path.join(
-    #         context.entry_dir, 
-    #         self.history_dir,
-    #         f'episode_history_{self.agent.get_model_name()}.json'
-    #         )
-
-    #     import pandas as pd
-    #     df = pd.DataFrame(self.history)
-    #     df.to_json(path)
-    
-    # def save_model(self, reset_model: bool = True) -> str:
-    #     path = os.path.join(
-    #         context.entry_dir, f'log/mab/model/{self.agent.get_model_name()}.h5')
-    #     self.agent.save_weights(path, True)
-
-    #     print(f"Saving model...")
-    #     print("[DEBUG] model weights saved successfully in", path)
     
     def shut_down_env(self) -> None:
         self.environment.close()

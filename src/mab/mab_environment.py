@@ -20,7 +20,7 @@ ACTION_FLAG = 2
 
 class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
-    def __init__(self, observation_spec, action_spec, policies_id=None, batch_size=1, normalize_rw: bool = True):
+    def __init__(self, observation_spec, action_spec, policies_id=None, batch_size=1, normalize_rw: bool = True, logger: bool = False):
         super(MabEnvironment, self).__init__(observation_spec, action_spec)
         self._action_spec = action_spec
         self._batch_size = batch_size
@@ -80,9 +80,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         os.makedirs(os.path.dirname(csv_file), exist_ok=True)
         self.log_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
         self.logger = Logger(csv_file=csv_file, 
-                    columns=['epoch', 'step']+self.log_features+['reward'])
-        # self.log_traces = ""
-        self.allow_save = False
+                        columns=['epoch', 'step']+self.log_features+['reward']) if logger else None
         self.initiated = False
         self.curr_reward = 0
 
@@ -106,39 +104,6 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         binary_rws = []
         collected_data = {}
 
-        # Read kernel features
-        # data = self._read_data()
-        # collected_data = {feature: data[i] for i, feature in enumerate(self.feature_names)}
-        # collected_data['thruput'] *= 1e-6  # bps -> Mbps
-        # collected_data['loss_rate'] *= 0.01  # percentage -> ratio
-        
-        # for key in ['prev_proto_id', 'delivered', 'lost', 'in_flight']:
-        #     collected_data[key] = int(collected_data[key])
-
-        # # print the collected data
-        # # print(f'Collected data: {collected_data}')
-
-        # # Compute statistics for the features
-        # self.feat_extractor.update([val for name, val in collected_data.items() if name in self.stat_features])
-        # self.feat_extractor.compute_statistics()
-        # feat_statistics = self.feat_extractor.get_statistics()
-
-        # for size in self.window_sizes:
-        #     for feature in self.stat_features:
-        #         _feat_averages.append(feat_statistics[size]['avg'][feature])
-        #         _feat_min.append(feat_statistics[size]['min'][feature])
-        #         _feat_max.append(feat_statistics[size]['max'][feature])
-
-        # feat_averages = np.array(_feat_averages)
-        # feat_min = np.array(_feat_min)
-        # feat_max = np.array(_feat_max)
-
-        # # Store the kernel feature to append to the state
-        # curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
-        #                         feat_averages, feat_min, feat_max))
-
-        # curr_timestamp = collected_data['now']
-        # num_msg = 1
         start = time.time()
         # Read and record data for step_wait seconds
         while float(time.time() - start) <= float(self.step_wait):
@@ -176,7 +141,8 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
             data_tmp_collected = collected_data.copy()
             # Regenerate curr_kernel_features but stack the one_hot_encoded version of crt_proto_id
-            data_tmp = self.preprocess_data(data_tmp_collected)
+            data_tmp, before_one_hot = self.preprocess_data(data_tmp_collected)
+            self.log_values = before_one_hot # Store the features before one_hot_encoding (only for logging)
 
             if s_tmp.shape[0] == 0:
                 s_tmp = np.array(data_tmp).reshape(1, -1)
@@ -185,25 +151,6 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                 s_tmp = np.vstack((s_tmp, np.array(data_tmp).reshape(1, -1)))
                 # log_tmp = np.vstack((log_tmp, np.array(log_kernel_features).reshape(1, -1)))
 
-            # Store the kernel feature to append to the state
-            # curr_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.non_stat_features], 
-            #                 self.feat_averages, self.feat_min, self.feat_max))
-            
-            # curr_kernel_features.reshape(1, -1)
-            # log_kernel_features = np.concatenate(([val for feat, val in collected_data.items() if feat in self.feature_names],
-            #                 feat_averages, feat_min, feat_max))
-
-            # else:
-            #     # sum new reading to existing readings
-            #     curr_kernel_features = np.add(curr_kernel_features,
-            #                 np.concatenate((
-            #                     [val for feat, val in collected_data.items() if feat in self.non_stat_features], 
-            #                     feat_averages, feat_min, feat_max)))
-            #     # log_kernel_features = np.add(log_kernel_features,
-            #     #             np.concatenate(([val for feat, val in collected_data.items() if feat in self.feature_names],
-            #     #                 feat_averages, feat_min, feat_max)))
-            #     num_msg += 1
-
         # Observation as a mean of the samples
         # TODO check state averaging (not sure if we can do that anywhere else with the tf settings) 
         self._observation = np.array(np.mean(s_tmp, axis=0), dtype=np.float32).reshape(1, -1)
@@ -211,7 +158,6 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
         if self._observation.shape[1] != self._observation_spec.shape[0]:
             raise ValueError('The number of features in the observation should match the observation spec.')
-
 
         return self._observation
 
@@ -230,22 +176,12 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         data = {name: value for name, value in zip(self.training_features, self._observation[0])}
         reward = self._compute_reward(data['thruput'], data['loss_rate'], data['rtt'])
         reward = np.array(reward).reshape(self.batch_size)
+        if self.logger:
+            to_save = [self.epoch, self.step_counter] + [val for val in self.log_values[0]] + [reward[0]]
+            self.logger.log(to_save)
         return reward
 
-        # rws = []
-        # for k_features in self._observation:
-        #     # Extract individual features
-        #     tmp_collected_data = {name: value for name, value in zip(self.training_features, k_features)}
-        #     rw = self._compute_reward(tmp_collected_data['thruput'], tmp_collected_data['loss_rate'], tmp_collected_data['srtt'])
-        #     rws.append(rw)
-            # if self.allow_save:
-            #     self.logger.log([self.epoch, self.step_counter] + [val for val in k_features] + [rw])
         
-        # Reward as a mean of the samples
-        # TODO test reward as a batch
-        reward = np.array(np.mean(rws)).reshape(self.batch_size)
-        return reward
-  
     def _compute_reward(self, thr, loss_rate, rtt):
         # Reward is normalized if the normalize_rw is true, otherwise max_rw = 1
         return (pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6) ) / self.max_rw
@@ -313,12 +249,12 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                         self.feat_averages, self.feat_min, self.feat_max)).reshape(1, -1)
         # Remove crt_proto_id from the array 
         # preprocessed_data = np.delete(tmp, crt_proto_id_idx)
-        tmp = np.delete(tmp, crt_proto_id_idx, axis=1)
+        tmp_no_id = np.delete(tmp.copy(), crt_proto_id_idx, axis=1)
         # Insert the one_hot_encoded version of crt_proto_id in the collected data
         # preprocessed_data = np.hstack((preprocessed_data, one_hot_proto_id))
         # Concatenate the one_hot_proto_id with the rest of the features
-        preprocessed_data = np.hstack((tmp, one_hot_proto_id))
-        return preprocessed_data
+        preprocessed_data = np.hstack((tmp_no_id, one_hot_proto_id))
+        return preprocessed_data, tmp
             
     def set_initial_protocol(self):
         """
