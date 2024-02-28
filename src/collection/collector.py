@@ -8,7 +8,6 @@ from comm.kernel_thread import KernelRequest
 from utilities import utils
 from collections import deque
 
-
 # Protocol mapping
 PROTOCOL_MAPPING = {
     "cubic": 0,
@@ -38,7 +37,7 @@ class Collector():
     Output: csv file of data collected
     """
 
-    def __init__(self, protocol, running_time, log_dir='log/collection', rtt=20, bw=12, bdp_mult=1):
+    def __init__(self, protocol, running_time, log_dir='log/collection', rtt=20, bw=12, bdp_mult=1, normalize=False):
         self.bw = int(bw)
         self.rtt = int(rtt)
         self.bdp_mult = round(bdp_mult, 1) if bdp_mult < 1 else int(bdp_mult)
@@ -58,6 +57,7 @@ class Collector():
         self.initiated = False
         self.prev_delivered = None
         self.rw_win = deque(maxlen=100)
+        self.normalize = normalize
 
         self._init_communication()
 
@@ -141,35 +141,19 @@ class Collector():
             data_dict['loss_rate'] = data_dict['loss_rate'] / 100
             data_dict['thruput'] = data_dict['thruput'] / 1e6 # Convert to Mbps
 
-            reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']),  self.sys_settings['reward']['kappa']) / (data_dict['srtt']*10**-6)
+            reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']),  self.sys_settings['reward']['kappa']) / (data_dict['rtt']*10**-6)
             
-            # self.rw_win.append(reward)
-            # min_rw = min(self.rw_win)
-            # max_rw = max(self.rw_win)
-            # if max_rw - min_rw != 0:
-            #     reward = (reward - min_rw) / (max_rw - min_rw)
-            # else:
-            #     reward = 0
-            normalized_reward = reward / max_rw
-            
-            data_dict['reward'] = normalized_reward
-            print('Reward:', normalized_reward, 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
-            # collected_data['reward'].append(reward)
-            
-            # print('\n')
-            # print('\n')
+            normalized_reward = reward / max_rw            
+            data_dict['reward'] = normalized_reward if self.normalize else reward
 
-            # if data_dict['thruput'] > self.bw*2:
-            #     print('timestamp:', data_dict['now'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'], 'Reward:', reward)
-            
-            # print("-- Collected Data --")
-            # print("\n".join(f"{key}: {value}" for key, value in collected_data.items()))
+            print('Reward:', data_dict['reward'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
 
             # Save collected data to csv file
             self.write_data(data_dict, path_to_file)
 
             for feature in feature_names:
                 collected_data[feature].append(data_dict[feature])
+
         
         print(f"Collection of {self.protocol} completed.")
         print(f"Avg thr: {round(np.mean(collected_data['thruput']), 4)} Mbps, \
