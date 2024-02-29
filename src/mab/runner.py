@@ -21,6 +21,7 @@ from src.mab.mab_agent import MabAgent
 from src.mab.mab_environment import MabEnvironment
 
 from comm.comm import CommManager
+import plots as plt
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 import yaml
@@ -57,7 +58,6 @@ class MabRunner():
         # Set up communication with kernel
         self.cm = CommManager(log_dir_name='log/iperf', rtt=min_rtt, bw=bw, bdp_mult=bdp_mult) #iperf_dir, time
 
-        
         self.proto_config = utils.parse_protocols_config()
         if not policies:
             self.policies_id = list(self.proto_config.keys())
@@ -74,6 +74,7 @@ class MabRunner():
         self.training_time = None
         self.step_wait_time = config['step_wait_seconds']
         self.num_steps = config['num_steps']
+        self.total_steps = config['num_steps'] * config["steps_per_loop"]
         
         # Define observation and action space
         self.step_wait = config['step_wait_seconds']
@@ -92,8 +93,9 @@ class MabRunner():
                               gamma=0.9) # TODO trajectory spec observation size to check 
         
         # TF Environment
+        _net_params = {'bw': self.bw, 'rtt': self.min_rtt, 'bdp_mult': self.bdp_mult}
         self.batch_size = 1
-        env = MabEnvironment(observation_spec, action_spec, self.policies_id, batch_size=self.batch_size, normalize_rw=False, logger=True)
+        env = MabEnvironment(observation_spec, action_spec, self.policies_id, _net_params, batch_size=self.batch_size, normalize_rw=False, logger=True)
         self.environment: MabEnvironment = tf_py_environment.TFPyEnvironment(env)
         self.environment.allow_save = log
         self.now = time.time()
@@ -105,7 +107,7 @@ class MabRunner():
         else:
             self.map_proto = {i: p for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
         
-        self.settings = {'timestamp': self.timestamp, **config, 'action_mapping': self.map_proto, **self.feature_settings}
+        self.settings = {'timestamp': self.timestamp, **_net_params, **config, 'action_mapping': self.map_proto, **self.feature_settings}
         utils.log_settings(os.path.join(self.log_dir, 'settings.json'), self.settings, 'failed')
 
 
@@ -130,7 +132,7 @@ class MabRunner():
     def train(self) -> Any:      
 
         batch_size = self.batch_size
-        steps_per_loop = 10
+        steps_per_loop = self.config['steps_per_loop']
         replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
             data_spec=self.agent.policy.trajectory_spec,
             batch_size=batch_size, #TODO adjust batch_size (what it refers to?)
@@ -149,7 +151,8 @@ class MabRunner():
         # step = self.environment.reset()
         # print("observation:", step.observation)
 
-        for step in range(self.num_steps):
+        start = time.time()
+        for step in range(self.num_steps): # Number of total steps is num_steps * steps_per_loop
             driver.run()
             sel_actions = replay_buffer.gather_all().action.numpy()[0]
             rewards = replay_buffer.gather_all().reward.numpy()[0]
@@ -168,11 +171,16 @@ class MabRunner():
             # step = next_step
             replay_buffer.clear()
         
-        self.save_figs(self)
+        self.training_time = time.time() - start
+        self.save_figs()
+        utils.update_log(os.path.join(self.log_dir, 'settings.json'), self.settings, 'success', self.training_time)
 
     def save_figs(self):
         exp = {'bw': self.bw, 'rtt': self.min_rtt, 'bdp_mult': self.bdp_mult}
-        plot_training_reward_single(self.timestamp, exp)
+        plt.plot_training_reward_single(self.timestamp, exp)
+        plt.plot_training_reward_multi(self.timestamp, self.policies_id, exp, str(self.total_steps))
+        plt.plot_rtt_multi(self.timestamp, self.policies_id, exp, str(self.total_steps))
+        plt.plot_thr_multi(self.timestamp, self.policies_id, exp, str(self.total_steps))
 
     def compute_optimal_reward(observation):
        pass

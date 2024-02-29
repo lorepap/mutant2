@@ -5,6 +5,8 @@ import pandas as pd
 import time
 from argparse import ArgumentParser
 
+from src.utilities import utils
+
 sns.set_theme(style="darkgrid")
 
 """
@@ -30,10 +32,11 @@ exp_dict = {
     "Challenging_Network_2": {"bw": 12, "rtt": 30, "bdp_mult": 0.5},
 }
 
-def plot_thr_single(protocol, exp):
+def plot_thr_single(protocol, exp, n_steps):
     """
     Plot a single statistic for a given protocol over time, given the experiment settings
     """
+    collection_dir = os.path.join(log_dir, 'collection', 'csv', n_steps)
     df = pd.read_csv(os.path.join(collection_dir, 
         f"{protocol}.bw{exp['bw']}.rtt{exp['rtt']}.bdp_mult{exp['bdp_mult']}.csv"))
     
@@ -49,10 +52,11 @@ def plot_thr_single(protocol, exp):
     plt.savefig(f"{save_dir}/{protocol}.throughput_over_time.bw{exp['bw']}.rtt{exp['rtt']}.bdp_mult{exp['bdp_mult']}.png",
                 bbox_inches='tight')
 
-def plot_thr_multi(pool, exp):
+def plot_thr_multi(pool, exp, n_steps):
     """
     Plot a single statistic for multiple protocols over time
     """
+    collection_dir = os.path.join(log_dir, 'collection', 'csv', n_steps)
     plt.figure(figsize=(20, 5))
     for proto in pool:
         df = pd.read_csv(os.path.join(collection_dir,
@@ -74,10 +78,11 @@ def plot_avg_thr_single(protocol, exp):
     """
     pass
 
-def plot_rtt_single(protocol, exp):
+def plot_rtt_single(protocol, exp, n_steps):
     """
     Plot a single statistic for a given protocol over time, given the experiment settings
     """
+    collection_dir = os.path.join(log_dir, 'collection', 'csv', n_steps) 
     df = pd.read_csv(os.path.join(collection_dir, 
         f"{protocol}.bw{exp['bw']}.rtt{exp['rtt']}.bdp_mult{exp['bdp_mult']}.csv"))
     
@@ -93,10 +98,11 @@ def plot_rtt_single(protocol, exp):
     plt.savefig(f"{save_dir}/{protocol}.rtt_over_time.bw{exp['bw']}.rtt{exp['rtt']}.bdp_mult{exp['bdp_mult']}.png",
                 bbox_inches='tight')
 
-def plot_rtt_multi(pool, exp):
+def plot_rtt_multi(pool, exp, n_steps):
     """
     Plot a single statistic for multiple protocols over time
     """
+    collection_dir = os.path.join(log_dir, 'collection', 'csv', n_steps)
     plt.figure(figsize=(20, 5))
     for proto in pool:
         df = pd.read_csv(os.path.join(collection_dir,
@@ -118,10 +124,11 @@ def plot_avg_rtt_single(protocol, exp):
     """
     pass
 
-def plot_reward_single(protocol, exp):
+def plot_reward_single(protocol, exp, n_steps):
     """
     Plot a single statistic for a given protocol over time, given the experiment settings
     """
+    collection_dir = os.path.join(log_dir, 'collection', 'csv', n_steps)
     df = pd.read_csv(os.path.join(collection_dir, 
         f"{protocol}.bw{exp['bw']}.rtt{exp['rtt']}.bdp_mult{exp['bdp_mult']}.csv"))
     
@@ -137,10 +144,11 @@ def plot_reward_single(protocol, exp):
     plt.savefig(f"{save_dir}/{protocol}.reward_over_time.bw{exp['bw']}.rtt{exp['rtt']}.bdp_mult{exp['bdp_mult']}.png",
                 bbox_inches='tight')
 
-def plot_reward_multi(pool, exp):
+def plot_reward_multi(pool, exp, n_steps):
     """
     Plot a single statistic for multiple protocols over time
     """
+    collection_dir = os.path.join(log_dir, 'collection', 'csv', n_steps)
     plt.figure(figsize=(20, 5))
     for proto in pool:
         df = pd.read_csv(os.path.join(collection_dir, 
@@ -167,18 +175,19 @@ def plot_avg_reward_single(protocol, exp):
 if __name__ == "__main__":
     name = "Large_Queue"
     to_plot = exp_dict[name]
-
     parser = ArgumentParser()
     parser.add_argument("--proto", "-p", nargs='+', help='Protocols to plot')
-    parser.add_argument("--collection_time", "-t", type=str, default="30s", help="Collection time")
+    parser.add_argument("--steps", "-s", type=int, default=None, help="Number of steps")
     args = parser.parse_args()
-    collection_dir = os.path.join(log_dir, 'collection', 'csv', args.collection_time)
     protos = args.proto
+    if not args.steps:
+        config = utils.parse_training_config()
+        n_steps = config['num_steps']
     for p in protos:
-        plot_thr_single(p, to_plot)
-        plot_rtt_single(p, to_plot)
-        plot_reward_single(p, to_plot)
+        plot_thr_single(p, to_plot, n_steps)
+        plot_rtt_single(p, to_plot, n_steps)
+        plot_reward_single(p, to_plot, n_steps)
     if len(protos) > 1:
-        plot_thr_multi(protos, to_plot)
-        plot_rtt_multi(protos, to_plot)
-        plot_reward_multi(protos, to_plot)
+        plot_thr_multi(protos, to_plot, n_steps)
+        plot_rtt_multi(protos, to_plot, n_steps)
+        plot_reward_multi(protos, to_plot, n_steps)

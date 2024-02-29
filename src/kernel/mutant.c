@@ -111,18 +111,18 @@ static void send_msg(char *message, int socketId)
     if (messageSentReponseCode < 0)
     {
         fail_cnt++;
-        printk(KERN_ERR "Mutant | %s: Error while sending message | (PID = %d) | (Error = %d) | (Fail counter = %d)\n", __FUNCTION__, socketId, messageSentReponseCode, fail_cnt);
+        // printk(KERN_ERR "Mutant | %s: Error while sending message | (PID = %d) | (Error = %d) | (Fail counter = %d)\n", __FUNCTION__, socketId, messageSentReponseCode, fail_cnt);
     }
-    else
-    {
-        success_cnt++;
-        printk("Mutant | %s: Correctly sent message to app layer | PID = %d | Success counter: %d", __FUNCTION__, socketId, success_cnt);
-    }
+    // else
+    // {
+    //     success_cnt++;
+    //     printk("Mutant | %s: Correctly sent message to app layer | PID = %d | Success counter: %d", __FUNCTION__, socketId, success_cnt);
+    // }
 }
 
 static void start_connection(struct nlmsghdr *nlh)
 {
-    success_cnt = 0;
+    // success_cnt = 0;
     fail_cnt = 0;
     prev_proto_id = CUBIC;
 
@@ -222,7 +222,7 @@ static void receive_msg(struct sk_buff *skb)
             switching_flag = true;
             prev_proto_id = selected_proto_id;
             selected_proto_id = nlh->nlmsg_seq; 
-            // printk("%s: received switching signal (id: %d->%d)", __FUNCTION__, prev_proto_id, selected_proto_id);
+            printk("%s: received switching signal (id: %d->%d)", __FUNCTION__, prev_proto_id, selected_proto_id);
         }
         break;
     default: // testing
