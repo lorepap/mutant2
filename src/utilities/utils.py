@@ -2,7 +2,6 @@ import os
 import sys
 import subprocess
 import traceback
-from utilities import context
 from datetime import datetime
 import numpy as np
 import yaml
@@ -12,6 +11,7 @@ import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from comm.netlink_communicator import NetlinkCommunicator
+import utilities.context as context
 import re
 
 TIME_FORMAT = '%Y.%m.%d.%H.%M.%S'
@@ -130,13 +130,32 @@ def extend_features_with_stats(all_features, stat_features):
                 all_features.extend([f"{stat_feature}_{w_size}_avg", f"{stat_feature}_{w_size}_min", f"{stat_feature}_{w_size}_max"])
     return all_features
 
+def get_training_features(all_features, stat_features, n_actions):
+    # all_feature does not need to be modified
+    all_features = [f for f in all_features.copy() if f not in 'crt_proto_id']
+    # Iterate through train_stat_features
+    for stat_feature in stat_features:
+        for w_size in ['s', 'm', 'l']:
+            # Check if the stat_feature is in all_features
+            if stat_feature in all_features:
+                # Append additional statistical features to all_features
+                all_features.extend([f"{stat_feature}_{w_size}_avg", f"{stat_feature}_{w_size}_min", f"{stat_feature}_{w_size}_max"])
+    # One hot encoding features. N_actions = 2**n_features, so n_features= log2(n_actions)
+    all_features.extend([f"arm_{i}" for i in range(n_actions)])
+    return all_features
+
 def log_settings(filename: str, settings: dict, status: str = False, training_time: str = "") -> None:
-    logging.basicConfig(filename=filename, level=logging.INFO, format='%(message)s')
+    logger = logging.getLogger(__name__)  # Create a separate logger instance
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(message)s')
+    file_handler = logging.FileHandler(filename)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)    
     settings['status'] = status
     if status == "success":
         settings['training_time'] = training_time
     log_message = json.dumps(settings)
-    logging.info(log_message)
+    logger.info(log_message)
 
 def update_log(filename, settings, status, training_time):
     with open(filename, 'r') as file:
