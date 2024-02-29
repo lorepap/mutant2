@@ -13,6 +13,13 @@ class KernelRequest(threading.Thread):
         self.num_fields_kernel = num_fields_kernel
         self.queue = queue.Queue()
         self.exit_event = threading.Event()  # Event to signal thread to exit
+        self.enabled = False
+
+    def enable(self):
+        self.enabled = True
+
+    def disable(self):
+        self.enabled = False
 
     def run(self):
         while True:
@@ -48,7 +55,8 @@ class KernelRequest(threading.Thread):
                         split_data = data_decoded.split(';')
                         entry = [int(field) if field.isdigit() or (field[1:].isdigit() and field[0] == '-') else field for field in split_data]
                         # print("[KERNEL THREAD] Data received:", entry)
-                        self.queue.put(entry)
+                        if self.enabled:
+                            self.queue.put(entry)
                         # print queue size
                         # print("[KERNEL THREAD] Queue size:", self.queue.qsize())
                         # print("[KERNEL THREAD] Queue contents:", list(self.queue.queue))

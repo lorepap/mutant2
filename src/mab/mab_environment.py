@@ -20,7 +20,7 @@ ACTION_FLAG = 2
 
 class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
-    def __init__(self, observation_spec, action_spec, policies_id=None, batch_size=1, normalize_rw: bool = True, logger: bool = False):
+    def __init__(self, observation_spec, action_spec, policies_id=None, net_params=None, batch_size=1, normalize_rw: bool = False, logger: bool = False):
         super(MabEnvironment, self).__init__(observation_spec, action_spec)
         self._action_spec = action_spec
         self._batch_size = batch_size
@@ -31,7 +31,6 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         # Step counter
         self.num_steps = config['num_steps']
         self.step_counter = 0
-        self.global_step_counter = 0
 
         # Reward
         self.curr_reward = 0
@@ -40,10 +39,9 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.step_wait = config['step_wait_seconds']
         self.zeta = config['reward']['zeta']
         self.kappa = config['reward']['kappa']
-        # self._reward_spec = array_spec.BoundedArraySpec(
-        #     shape=(), dtype=np.float32, minimum=0, maximum=np.inf, name='reward')
+        self._params = net_params
         if normalize_rw:
-            self.max_rw = pow(self.config['bw'], self.config['reward']['kappa']) / (self.config['min_rtt']*10**-6)
+            self.max_rw = pow(self._params['bw'], self.config['reward']['kappa']) / (self._params['rtt']*10**-6)
         else:
             self.max_rw = 1
 
@@ -53,7 +51,8 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.stat_features= self.feature_settings['train_stat_features']
         self.non_stat_features = self.feature_settings['train_non_stat_features']
         self.window_sizes = self.feature_settings['window_sizes']
-        self.training_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
+        # self.training_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
+        self.training_features = utils.get_training_features(self.non_stat_features, self.stat_features, self._action_spec.maximum+1)
         self.feat_extractor = FeatureExtractor(self.stat_features, self.window_sizes) # window_sizes=(10, 200, 1000)
 
         # Define action and observation space
@@ -63,12 +62,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         else:
             self._map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
         self._inv_map_proto = {v: k for k, v in self._map_proto.items()}
-
-        
-        # self.width_state = len(self.non_stat_features) #+ 3 * len(self.stat_features) * len(self.window_sizes)
-        # self.action_space = spaces.Discrete(len(policies))
-        # self.observation_space = spaces.Box(
-        #     low=0, high=np.inf, shape=(10, self.width_state), dtype=int) # Check the height (None)
+        self.crt_action = None
 
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
@@ -90,7 +84,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
     def _observe(self):
         s_tmp = np.array([])
-        log_tmp = np.array([])
+        _log_tmp = []
         # state_n = np.array([])
         state = np.array([])
         _feat_averages = []
@@ -104,21 +98,35 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         binary_rws = []
         collected_data = {}
 
-        start = time.time()
+        # Block to kernel thread to avoid samples from the next protocol
+        self.kernel_thread.enable()
+        
         # Read and record data for step_wait seconds
+        start = time.time()
         while float(time.time() - start) <= float(self.step_wait):
             # Empty the stats
             _feat_averages = []
             _feat_min = []
             _feat_max = []
-            # collected_data = {}
 
             # Read kernel features
             data = self._read_data()
             collected_data = {feature: data[i] for i, feature in enumerate(self.feature_names)}
+            # print("[DEBUG] rtt", collected_data['rtt'])
+            # print("[DEBUG] ACTION RECEIVED", collected_data['crt_proto_id'])
+            # Discard samples of another protocol
+            if self.crt_action:
+                if collected_data['crt_proto_id'] != int(self._map_proto[self.crt_action[0]]):
+                    continue
+            
             collected_data['thruput'] *= 1e-6  # bps -> Mbps
+            
+            # Filter corrupted samples
+            if collected_data['thruput'] > 10*self._params['bw'] or collected_data['rtt'] < self._params['rtt']*10**3: # Filter corrupted samples
+                continue
+            
             collected_data['loss_rate'] *= 0.01  # percentage -> ratio
-            for key in ['prev_proto_id', 'delivered', 'lost', 'in_flight']: 
+            for key in ['crt_proto_id', 'prev_proto_id', 'delivered', 'lost', 'in_flight']: 
                 collected_data[key] = int(collected_data[key])
             
             # Compute statistics for the features
@@ -142,8 +150,8 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
             data_tmp_collected = collected_data.copy()
             # Regenerate curr_kernel_features but stack the one_hot_encoded version of crt_proto_id
             data_tmp, before_one_hot = self.preprocess_data(data_tmp_collected)
-            self.log_values = before_one_hot # Store the features before one_hot_encoding (only for logging)
-
+            _log_tmp.append(before_one_hot) # Store the features before one_hot_encoding (only for logging)
+            
             if s_tmp.shape[0] == 0:
                 s_tmp = np.array(data_tmp).reshape(1, -1)
                 # log_tmp = np.array(log_kernel_features).reshape(1, -1)
@@ -151,8 +159,14 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                 s_tmp = np.vstack((s_tmp, np.array(data_tmp).reshape(1, -1)))
                 # log_tmp = np.vstack((log_tmp, np.array(log_kernel_features).reshape(1, -1)))
 
+        self.kernel_thread.disable()
         # Observation as a mean of the samples
-        # TODO check state averaging (not sure if we can do that anywhere else with the tf settings) 
+        # Check if the crt_proto_id is the same for all the samples (it must be, otherwise is an error))
+        self.log_values = np.mean(np.array(_log_tmp), axis=0).reshape(1, -1)
+        # print("[DEBUG] Current proto id", self.log_values[0][7])
+        # crt_proto_id_idx = self.non_stat_features.index('crt_proto_id')
+        # self.log_values[0][crt_proto_id_idx] = int(collected_data['crt_proto_id'])
+
         self._observation = np.array(np.mean(s_tmp, axis=0), dtype=np.float32).reshape(1, -1)
         # self._observation = np.array(s_tmp)
 
@@ -163,12 +177,11 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
     def _apply_action(self, action):
         # TODO Apply the action and get the reward. Here the reward is not the reward of the action selected, the the previous one
-
+        self.crt_action = action
         # Change the CCA
         msg = self.netlink_communicator.create_netlink_msg(
                 'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self._map_proto[action[0]]))
         self.netlink_communicator.send_msg(msg)
-
         self._observation = self._observe() # Update the observation to get the fresh reward
 
         # Compute the reward given the mean of the collected samples as the observation (shape: (1, num_features))
@@ -179,6 +192,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         if self.logger:
             to_save = [self.epoch, self.step_counter] + [val for val in self.log_values[0]] + [reward[0]]
             self.logger.log(to_save)
+            self.step_counter+=1
         return reward
 
         
@@ -243,7 +257,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         one_hot_proto_id = self.one_hot_encode(self._inv_map_proto[str(data['crt_proto_id'])],
                                 self._action_spec.maximum+1).reshape(1, -1)
         # Index of crt_proto_id in the collected data dict
-        crt_proto_id_idx = self.feature_names.index('crt_proto_id')
+        crt_proto_id_idx = self.log_features.index('crt_proto_id')
         # Store the kernel feature to append to the state
         tmp = np.concatenate(([val for feat, val in data.items() if feat in self.non_stat_features], 
                         self.feat_averages, self.feat_min, self.feat_max)).reshape(1, -1)

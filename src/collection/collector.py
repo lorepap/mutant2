@@ -37,27 +37,26 @@ class Collector():
     Output: csv file of data collected
     """
 
-    def __init__(self, protocol, running_time, log_dir='log/collection', rtt=20, bw=12, bdp_mult=1, normalize=False):
+    def __init__(self, protocol, n_steps, log_dir='log/collection', rtt=20, bw=12, bdp_mult=1, normalize=False):
         self.bw = int(bw)
         self.rtt = int(rtt)
         self.bdp_mult = round(bdp_mult, 1) if bdp_mult < 1 else int(bdp_mult)
         
-        self.cm = CollectionCommManager(log_dir_name=log_dir, client_time=running_time, rtt=rtt,
+        self.cm = CollectionCommManager(log_dir_name=log_dir, rtt=rtt,
                                 bw=bw, bdp_mult=bdp_mult)
         self.log_dir = log_dir
         self.protocol = protocol
         self.proto_id = PROTOCOL_MAPPING.get(protocol.lower())  # Convert to lowercase for case-insensitivity
-        self.running_time = running_time
-        # TODO: handle the params with a config file
-        with open('config/train.yml', 'r') as file:
-            self.sys_settings = yaml.safe_load(file)
+        self.n_steps = n_steps
         self.feature_settings = utils.parse_features_config()
 
-        self.num_fields_kernel = self.sys_settings['num_fields_kernel']
         self.initiated = False
         self.prev_delivered = None
-        self.rw_win = deque(maxlen=100)
         self.normalize = normalize
+
+        self.config = utils.parse_training_config()
+        self.step_wait = self.config['step_wait_seconds']
+        self.num_fields_kernel = self.config['num_fields_kernel']
 
         self._init_communication()
 
@@ -116,7 +115,7 @@ class Collector():
         """
 
         # Check if the file already exists
-        csv_dir = f'{self.log_dir}/csv/{int(self.running_time)}s/'
+        csv_dir = f'{self.log_dir}/csv/{int(self.n_steps)}/'
         os.makedirs(csv_dir, exist_ok=True)
         path_to_file = os.path.join(csv_dir, f'{self.protocol}.bw{self.bw}.rtt{self.rtt}.bdp_mult{self.bdp_mult}.csv')
         if os.path.exists(path_to_file):
@@ -129,32 +128,43 @@ class Collector():
         feature_names = self.feature_settings['kernel_info'] + ['reward']
         collected_data = {feature: [] for feature in feature_names}
         collected_data['reward'] = []
-        start = time.time()
+        # start = time.time()
         self.set_protocol() # Communicate with kernel to set the protocol
-        print(f"Running {self.protocol} for {self.running_time} seconds...")
+        print(f"Running {self.protocol} for {self.n_steps} steps...")
 
-        max_rw = pow(self.bw, self.sys_settings['reward']['kappa']) / (self.rtt*10**-3)
+        max_rw = pow(self.bw, self.config['reward']['kappa']) / (self.rtt*10**-3)
+        step_cnt = 0
+        while step_cnt < self.n_steps:
+            _tmp = []
+            self.kernel_thread.enable()
+            step_start = time.time()
+            while float(time.time() - step_start) <= float(self.step_wait):
+                data = self._read_data()
+                data_dict = {feature: data[i] for i, feature in enumerate(feature_names)}
+                data_dict['loss_rate'] = data_dict['loss_rate'] / 100
+                data_dict['thruput'] = data_dict['thruput'] / 1e6 # Convert to Mbps
+                # print("[DEBUG] rtt", data_dict['rtt'])
+                reward = pow(abs(data_dict['thruput'] - self.config['reward']['zeta'] * data_dict['loss_rate']),  self.config['reward']['kappa']) / (data_dict['rtt']*10**-6)
+                
+                normalized_reward = reward / max_rw            
+                data_dict['reward'] = normalized_reward if self.normalize else reward
 
-        while time.time()-start < self.running_time:
-            data = self._read_data()
-            data_dict = {feature: data[i] for i, feature in enumerate(feature_names)}
-            data_dict['loss_rate'] = data_dict['loss_rate'] / 100
-            data_dict['thruput'] = data_dict['thruput'] / 1e6 # Convert to Mbps
-
-            reward = pow(abs(data_dict['thruput'] - self.sys_settings['reward']['zeta'] * data_dict['loss_rate']),  self.sys_settings['reward']['kappa']) / (data_dict['rtt']*10**-6)
+                # Filter corrupted samples (theoretically the reward will never go beyond max_rw)
+                if data_dict['reward'] <= max_rw:  # Convert the given min_rtt to us
+                    _tmp.append(data_dict)
+            self.kernel_thread.disable()
             
-            normalized_reward = reward / max_rw            
-            data_dict['reward'] = normalized_reward if self.normalize else reward
-
-            print('Reward:', data_dict['reward'], 'Thruput (Mbps):', data_dict['thruput'], 'Loss rate:', data_dict['loss_rate'], 'RTT (ms):', data_dict['srtt'])
-
-            # Save collected data to csv file
-            self.write_data(data_dict, path_to_file)
-
+            # Averaging
+            _avg_data = {feature: np.mean([d[feature] for d in _tmp]) if feature not in ('crt_proto_id', 'prev_proto_id', 'now') else _tmp[-1][feature] for feature in feature_names}
+            self.write_data(_avg_data, path_to_file)
             for feature in feature_names:
-                collected_data[feature].append(data_dict[feature])
-
-        
+                collected_data[feature].append(_avg_data[feature])
+            step_cnt+=1
+            print(f'[STEP {step_cnt}]', 'Reward:', 
+                  _avg_data['reward'], 'Thruput (Mbps):', 
+                  _avg_data['thruput'], 'Loss rate:', 
+                  _avg_data['loss_rate'], 'RTT (ms):', 
+                  _avg_data['rtt'])    
         print(f"Collection of {self.protocol} completed.")
         print(f"Avg thr: {round(np.mean(collected_data['thruput']), 4)} Mbps, \
               Avg loss rate: {round(np.mean(collected_data['loss_rate']), 4)}, \
