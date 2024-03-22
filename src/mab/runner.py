@@ -17,7 +17,7 @@ from tf_agents.trajectories import trajectory
 from tf_agents.trajectories import time_step as ts
 from tf_agents.bandits.metrics import tf_metrics
 
-from src.mab.mab_agent import MabAgent
+from src.mab.mab_agent import NeuralUCBMabAgent
 from src.mab.mab_environment import MabEnvironment
 
 from comm.comm import CommManager
@@ -25,6 +25,8 @@ import plots as plt
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 import yaml
+
+from src.mab.encoding_network import EncodingNetwork
 
 
 class MabRunner():
@@ -87,10 +89,16 @@ class MabRunner():
 
         
         # TF Agent
-        self.agent = MabAgent(time_step_spec=time_step_spec, 
-                              action_spec=action_spec,
-                              alpha=0.1,
-                              gamma=0.9) # TODO trajectory spec observation size to check 
+        encoding_net = EncodingNetwork(observation_spec=observation_spec, encoding_dim=32)
+        self.agent = NeuralUCBMabAgent(time_step_spec=time_step_spec, 
+            action_spec=action_spec,
+            alpha=0.1,
+            gamma=0.9,
+            encoding_network=encoding_net,
+            encoding_network_num_train_steps=100,
+            encoding_dim=encoding_net.encoding_dim,
+            optimizer= tf.keras.optimizers.Adam(learning_rate=1e-3),
+        )
         
         # TF Environment
         _net_params = {'bw': self.bw, 'rtt': self.min_rtt, 'bdp_mult': self.bdp_mult}

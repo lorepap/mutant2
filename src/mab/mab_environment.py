@@ -16,6 +16,8 @@ import yaml
 from utilities.logger import Logger
 from comm.comm import ACTION_FLAG
 
+from collections import deque
+
 ACTION_FLAG = 2
 
 class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
@@ -33,6 +35,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.step_counter = 0
 
         # Reward
+        self._normalize_rw = normalize_rw
         self.curr_reward = 0
         self.epoch = 0
         self.allow_save = False
@@ -40,10 +43,8 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.zeta = config['reward']['zeta']
         self.kappa = config['reward']['kappa']
         self._params = net_params
-        if normalize_rw:
-            self.max_rw = pow(self._params['bw'], self.config['reward']['kappa']) / (self._params['rtt']*10**-6)
-        else:
-            self.max_rw = 1
+        self._thr_history = deque(maxlen=10)
+        self._rtt_history = deque(maxlen=10)
 
         # Feature extractor
         self.feature_settings = utils.parse_features_config()
@@ -187,7 +188,12 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         # Compute the reward given the mean of the collected samples as the observation (shape: (1, num_features))
 
         data = {name: value for name, value in zip(self.training_features, self._observation[0])}
-        reward = self._compute_reward(data['thruput'], data['loss_rate'], data['rtt'])
+        
+        if not self._normalize_rw:
+            reward = self._compute_reward(data['thruput'], data['loss_rate'], data['rtt'])
+        else:
+            reward = self._compute_normalize_reward(data['thruput'], data['loss_rate'], data['rtt'])
+
         reward = np.array(reward).reshape(self.batch_size)
         if self.logger:
             to_save = [self.epoch, self.step_counter] + [val for val in self.log_values[0]] + [reward[0]]
@@ -198,6 +204,9 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         
     def _compute_reward(self, thr, loss_rate, rtt):
         # Reward is normalized if the normalize_rw is true, otherwise max_rw = 1
+        return (pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6) )
+
+    def _compute_normalize_reward(self, thr, loss_rate, rtt):
         return (pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6) ) / self.max_rw
 
     def enable_log_traces(self):
