@@ -1,0 +1,175 @@
+diff -ruN linux-5.4.231/include/net/tcp.h linux-5.4.231-mutant/include/net/tcp.h
+--- linux-5.4.231/include/net/tcp.h	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/include/net/tcp.h	2024-03-20 18:03:18.865234510 -0500
+@@ -1072,6 +1072,11 @@
+ 	 */
+ 	void (*cong_control)(struct sock *sk, const struct rate_sample *rs);
+ 	/* get info for inet_diag (optional) */
++	/* Mutant custom congestion control function 
++	 Mutant implements a wrapper tcp_congestion ops struct which supports 
++	 both cong_control and cong_avoid tcp_congestion_ops functions
++	*/	
++	u32 (*mutant_tcp_cong_control)(struct sock *sk, const struct rate_sample *rs, u32 ack, u32 acked, int flag);
+ 	size_t (*get_info)(struct sock *sk, u32 ext, int *attr,
+ 			   union tcp_cc_info *info);
+ 
+diff -ruN linux-5.4.231/net/ipv4/tcp_bbr.c linux-5.4.231-mutant/net/ipv4/tcp_bbr.c
+--- linux-5.4.231/net/ipv4/tcp_bbr.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_bbr.c	2024-03-20 18:06:14.756247204 -0500
+@@ -1151,6 +1151,7 @@
+ 	.get_info	= bbr_get_info,
+ 	.set_state	= bbr_set_state,
+ };
++EXPORT_SYMBOL_GPL(tcp_bbr_cong_ops);
+ 
+ static int __init bbr_register(void)
+ {
+	
+diff -ruN linux-5.4.231/net/ipv4/tcp_bic.c linux-5.4.231-mutant/net/ipv4/tcp_bic.c
+--- linux-5.4.231/net/ipv4/tcp_bic.c    2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_bic.c     2024-03-21 19:27:51.851624359 -0500
+@@ -198,7 +198,7 @@
+        }
+ }
+ 
+-static struct tcp_congestion_ops bictcp __read_mostly = {
++static struct tcp_congestion_ops bic __read_mostly = {
+        .init           = bictcp_init,
+        .ssthresh       = bictcp_recalc_ssthresh,
+        .cong_avoid     = bictcp_cong_avoid,
+@@ -208,16 +208,17 @@
+        .owner          = THIS_MODULE,
+        .name           = "bic",
+ };
++EXPORT_SYMBOL_GPL(bic);
+ 
+ static int __init bictcp_register(void)
+ {
+        BUILD_BUG_ON(sizeof(struct bictcp) > ICSK_CA_PRIV_SIZE);
+-       return tcp_register_congestion_control(&bictcp);
++       return tcp_register_congestion_control(&bic);
+ }
+ 
+ static void __exit bictcp_unregister(void)
+ {
+-       tcp_unregister_congestion_control(&bictcp);
++       tcp_unregister_congestion_control(&bic);
+ }
+ 
+ module_init(bictcp_register);
+
+diff -ruN linux-5.4.231/net/ipv4/tcp_cdg.c linux-5.4.231-mutant/net/ipv4/tcp_cdg.c
+--- linux-5.4.231/net/ipv4/tcp_cdg.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_cdg.c	2024-03-20 18:07:43.491794961 -0500
+@@ -403,6 +403,7 @@
+ 	.owner = THIS_MODULE,
+ 	.name = "cdg",
+ };
++EXPORT_SYMBOL_GPL(tcp_cdg);
+ 
+ static int __init tcp_cdg_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_cubic.c linux-5.4.231-mutant/net/ipv4/tcp_cubic.c
+--- linux-5.4.231/net/ipv4/tcp_cubic.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_cubic.c	2024-03-20 18:04:55.540675225 -0500
+@@ -469,6 +469,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "cubic",
+ };
++EXPORT_SYMBOL(cubictcp);
+ 
+ static int __init cubictcp_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_htcp.c linux-5.4.231-mutant/net/ipv4/tcp_htcp.c
+--- linux-5.4.231/net/ipv4/tcp_htcp.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_htcp.c	2024-03-20 18:08:20.619613202 -0500
+@@ -296,6 +296,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "htcp",
+ };
++EXPORT_SYMBOL_GPL(htcp);
+ 
+ static int __init htcp_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_hybla.c linux-5.4.231-mutant/net/ipv4/tcp_hybla.c
+--- linux-5.4.231/net/ipv4/tcp_hybla.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_hybla.c	2024-03-20 18:05:56.496343687 -0500
+@@ -174,6 +174,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "hybla"
+ };
++EXPORT_SYMBOL_GPL(tcp_hybla);
+ 
+ static int __init hybla_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_illinois.c linux-5.4.231-mutant/net/ipv4/tcp_illinois.c
+--- linux-5.4.231/net/ipv4/tcp_illinois.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_illinois.c	2024-03-20 18:06:28.296176444 -0500
+@@ -337,6 +337,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "illinois",
+ };
++EXPORT_SYMBOL_GPL(tcp_illinois);
+ 
+ static int __init tcp_illinois_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_input.c linux-5.4.231-mutant/net/ipv4/tcp_input.c
+--- linux-5.4.231/net/ipv4/tcp_input.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_input.c	2024-03-20 18:03:18.865234510 -0500
+@@ -3352,6 +3352,12 @@
+ {
+ 	const struct inet_connection_sock *icsk = inet_csk(sk);
+ 
++	if (icsk->icsk_ca_ops->mutant_tcp_cong_control) {
++		if (icsk->icsk_ca_ops->mutant_tcp_cong_control(sk, ack, acked_sacked,
++							   flag) == 0);
++			return;
++	}
++
+ 	if (icsk->icsk_ca_ops->cong_control) {
+ 		icsk->icsk_ca_ops->cong_control(sk, rs);
+ 		return;
+diff -ruN linux-5.4.231/net/ipv4/tcp_vegas.c linux-5.4.231-mutant/net/ipv4/tcp_vegas.c
+--- linux-5.4.231/net/ipv4/tcp_vegas.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_vegas.c	2024-03-20 18:07:12.583949507 -0500
+@@ -318,6 +318,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "vegas",
+ };
++EXPORT_SYMBOL_GPL(tcp_vegas);
+ 
+ static int __init tcp_vegas_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_veno.c linux-5.4.231-mutant/net/ipv4/tcp_veno.c
+--- linux-5.4.231/net/ipv4/tcp_veno.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_veno.c	2024-03-20 18:06:55.320037173 -0500
+@@ -214,6 +214,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "veno",
+ };
++EXPORT_SYMBOL_GPL(tcp_veno);
+ 
+ static int __init tcp_veno_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_westwood.c linux-5.4.231-mutant/net/ipv4/tcp_westwood.c
+--- linux-5.4.231/net/ipv4/tcp_westwood.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_westwood.c	2024-03-20 18:06:42.304103940 -0500
+@@ -288,6 +288,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "westwood"
+ };
++EXPORT_SYMBOL_GPL(tcp_westwood);
+ 
+ static int __init tcp_westwood_register(void)
+ {
+diff -ruN linux-5.4.231/net/ipv4/tcp_yeah.c linux-5.4.231-mutant/net/ipv4/tcp_yeah.c
+--- linux-5.4.231/net/ipv4/tcp_yeah.c	2023-02-06 00:52:51.000000000 -0600
++++ linux-5.4.231-mutant/net/ipv4/tcp_yeah.c	2024-03-20 18:07:24.887887619 -0500
+@@ -237,6 +237,7 @@
+ 	.owner		= THIS_MODULE,
+ 	.name		= "yeah",
+ };
++EXPORT_SYMBOL_GPL(tcp_yeah);
+ 
+ static int __init tcp_yeah_register(void)
+ {

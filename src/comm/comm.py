@@ -54,18 +54,21 @@ class CommManager():
             print('Kernel has already been initialized\n')
             return
 
-        cmd = os.path.join(context.entry_dir, 'scripts/init_kernel.sh') 
+        cmd_1 = os.path.join(context.entry_dir, 'scripts/init_kernel.sh') 
+        cmd_2 = os.path.join(context.entry_dir, 'scripts/ins_proto.sh') # insert the policies in the pool as modules
 
-        # make script runnable
-        res = call(['chmod', '755', cmd])
-        if res != 0:
-            raise Exception('Unable to set run permission\n')
-
-        res = call(cmd)
-        if res != 0:
-            raise Exception('Unable to init kernel\n')
+        self.run_cmd(cmd_1)
+        self.run_cmd(cmd_2)
         
         print("Communication initiated")
+    
+    def run_cmd(self, cmd: str) -> Any:
+        try:
+            res = call(['chmod', '755', cmd])
+            res = call(cmd)
+        except Exception as e:
+            print(f"Error running command: {e}")
+            return None
         
     def start_server(self, server_log_dir='log/iperf'):
         base_path = os.path.join(context.entry_dir, server_log_dir)

@@ -18,6 +18,7 @@ from concurrent.futures import thread
 import traceback, signal
 
 import utilities.utils as utils
+import utilities.context as context
 from subprocess_wrappers import Popen, call, check_output, print_output, check_call
 import subprocess
 
@@ -87,8 +88,8 @@ class IperfClient(threading.Thread):
         print(f"[IPERF CLIENT] Mahimahi network scenario:\n rtt(ms) = {self.rtt}\n bw(Mbps) = {self.bw}\n q_size (pkts) = {self.q_size}")
         cmd = ['mm-delay', str(int(self.rtt/2)),
                'mm-link', 
-               f'/home/lorenzo/Desktop/mutant/traces/wired{int(self.bw)}',
-               f'/home/lorenzo/Desktop/mutant/traces/wired{int(self.bw)}',
+               f'{context.entry_dir}/traces/wired{int(self.bw)}',
+               f'{context.entry_dir}/traces/wired{int(self.bw)}',
                 '--uplink-queue=droptail',
                 f'--uplink-queue-args="packets={self.q_size}"',
                 '--downlink-queue=droptail', 
