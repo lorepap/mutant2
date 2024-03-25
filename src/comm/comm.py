@@ -54,8 +54,8 @@ class CommManager():
             print('Kernel has already been initialized\n')
             return
 
-        cmd_1 = os.path.join(context.entry_dir, 'scripts/init_kernel.sh') 
-        cmd_2 = os.path.join(context.entry_dir, 'scripts/ins_proto.sh') # insert the policies in the pool as modules
+        cmd_1 = os.path.join(context.entry_dir, 'scripts/ins_proto.sh') # insert the policies in the pool as modules
+        cmd_2 = os.path.join(context.entry_dir, 'scripts/init_kernel.sh') 
 
         self.run_cmd(cmd_1)
         self.run_cmd(cmd_2)
