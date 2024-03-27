@@ -24,7 +24,7 @@ import subprocess
 
 class IperfClient(threading.Thread):
 
-    def __init__(self, time=86400, log_file=None, rtt=20, bw=12, q_size=100) -> None:
+    def __init__(self, time=86400, log_file=None, rtt=20, bw=12, q_size=100, bw_factor=1) -> None:
         threading.Thread.__init__(self)
 
         self.ip = self._get_private_ip()
@@ -33,6 +33,7 @@ class IperfClient(threading.Thread):
         self.ps = None
         self.rtt = rtt
         self.bw = bw
+        self.bw_factor = bw_factor
         # self.bdp_mult = bdp_mult
         self.q_size = q_size
         # self._pid_file = "src/tmp/pid.txt"
@@ -86,10 +87,17 @@ class IperfClient(threading.Thread):
         # q_size = (self.bdp_mult * bdp) // 1500
         # Print client comm parameters
         print(f"[IPERF CLIENT] Mahimahi network scenario:\n rtt(ms) = {self.rtt}\n bw(Mbps) = {self.bw}\n q_size (pkts) = {self.q_size}")
+        
+        if self.bw_factor == 1:
+            trace_d = f'wired{int(self.bw)}'
+            trace_u = trace_d
+        else: 
+            trace_d = f'wired{int(self.bw)}-{self.bw_factor}x-d'
+            trace_u = f'wired{int(self.bw)}-{self.bw_factor}x-u'
         cmd = ['mm-delay', str(int(self.rtt/2)),
                'mm-link', 
-               f'{context.entry_dir}/traces/wired{int(self.bw)}',
-               f'{context.entry_dir}/traces/wired{int(self.bw)}',
+               f'{context.entry_dir}/traces/{trace_u}',
+               f'{context.entry_dir}/traces/{trace_d}',
                 '--uplink-queue=droptail',
                 f'--uplink-queue-args="packets={self.q_size}"',
                 '--downlink-queue=droptail', 

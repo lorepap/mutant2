@@ -19,12 +19,13 @@ END_COMM_FLAG = 0
 # Base class for Trainer
 class CommManager():
 
-    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=12, bdp_mult=1) -> None:
+    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=12, bdp_mult=1, bw_factor=1) -> None:
         
         self.time = client_time if client_time else 86400
         self.log_dir = log_dir_name
         self.min_rtt = rtt
         self.bw = bw
+        self.bw_factor = bw_factor
         # Compute the q_size (n. of packets)
         bdp = bw * rtt # Mbits
         mss = 1488 # bytes
@@ -89,7 +90,8 @@ class CommManager():
         log_filename = f'{base_path}/json/{filename}'
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
 
-        self.client = IperfClient(self.time, log_filename, self.min_rtt, self.bw, self.q_size)
+        self.client = IperfClient(self.time, log_filename, self.min_rtt, 
+                        self.bw, self.q_size, self.bw_factor)
 
         try:
             self.client.start()
