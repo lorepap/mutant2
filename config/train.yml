@@ -1,13 +1,9 @@
-num_steps: 100
+num_steps: 200
 steps_per_loop: 10
 num_features: 42
 num_fields_kernel: 14
-# lr: 1e-3
 algorithm: 'NeuralLinUCB'
-step_wait_seconds: 0.2
-min_rtt: 20 # ms
-bw: 12 # Mbps
-bdp_mult: 1
+step_wait_seconds: 0.3
 reward:
   zeta: 5
   kappa: 2

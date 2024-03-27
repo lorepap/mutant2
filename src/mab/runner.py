@@ -17,7 +17,7 @@ from tf_agents.trajectories import trajectory
 from tf_agents.trajectories import time_step as ts
 from tf_agents.bandits.metrics import tf_metrics
 
-from src.mab.mab_agent import NeuralUCBMabAgent
+from src.mab.mab_agent import NeuralUCBMabAgent, LinTSMabAgent
 from src.mab.mab_environment import MabEnvironment
 
 from comm.comm import CommManager
@@ -92,18 +92,25 @@ class MabRunner():
         encoding_net = EncodingNetwork(observation_spec=observation_spec, encoding_dim=32)
         self.agent = NeuralUCBMabAgent(time_step_spec=time_step_spec, 
             action_spec=action_spec,
-            alpha=0.1,
+            alpha=0.5,
             gamma=0.9,
             encoding_network=encoding_net,
-            encoding_network_num_train_steps=100,
+            encoding_network_num_train_steps=10,
             encoding_dim=encoding_net.encoding_dim,
             optimizer= tf.keras.optimizers.Adam(learning_rate=1e-3),
         )
         
+        # self.agent = LinTSMabAgent(
+        #     time_step_spec=time_step_spec,
+        #     action_spec=action_spec,
+        #     alpha=0.01,
+        #     gamma=0.75,
+        # )
+        
         # TF Environment
         _net_params = {'bw': self.bw, 'rtt': self.min_rtt, 'bdp_mult': self.bdp_mult}
         self.batch_size = 1
-        env = MabEnvironment(observation_spec, action_spec, self.policies_id, _net_params, batch_size=self.batch_size, normalize_rw=False, logger=True)
+        env = MabEnvironment(observation_spec, action_spec, self.policies_id, _net_params, batch_size=self.batch_size, normalize_rw=True, change_detection=True, logger=True)
         self.environment: MabEnvironment = tf_py_environment.TFPyEnvironment(env)
         self.environment.allow_save = log
         self.now = time.time()
@@ -166,7 +173,7 @@ class MabRunner():
             rewards = replay_buffer.gather_all().reward.numpy()[0]
             
             for a, r in zip(sel_actions, rewards):
-                print(f"[Step {step}] Action: {self.map_proto[a]}, Reward: {r}\n") 
+                print(f"[Step {step}] Action: {self.map_proto[a]} | Reward: {r} | (DEBUG) Max rw: {self.environment._max_rw}\n") 
             # TODO action step generates 20 different actions (why?)
             # action_step = self.agent.collect_policy.action(step)
             # next_step = self.environment.step(action_step.action)

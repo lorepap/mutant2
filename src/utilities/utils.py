@@ -48,10 +48,6 @@ def parse_training_config():
     with open(os.path.join(context.entry_dir, 'config/train.yml')) as config:
         return yaml.load(config, Loader=yaml.FullLoader)
 
-def parse_prod_config():
-    with open(os.path.join(context.entry_dir, 'config/prod.yml')) as config:
-        return yaml.load(config, Loader=yaml.BaseLoader)
-
 def np_encoder(self, object):
         if isinstance(object, np.generic):
             return object.item()
