@@ -2,37 +2,31 @@ import subprocess
 from argparse import ArgumentParser
 import traceback
 import time
-
+import src.utilities.utils as utils
+from src.utilities.experiments import Experiment
 import src.collection_plots as plt
 
 parser = ArgumentParser()
-parser.add_argument("--time", type=str, default="30", help="Experiment running time (s)")
-parser.add_argument("--proto", type=str, nargs='+', default=['bbr'], help="Protocol to use")
+parser.add_argument("--steps", default=100, help="Experiment running time (s)")
+parser.add_argument("--proto", type=str, nargs='+', default=None, help="Protocol to use")
 parser.add_argument("--experiment", type=str, nargs='+', default=None, help="Experiment to run")
 parser.add_argument("--normalize", action='store_true', help="Normalize the reward")
 args = parser.parse_args()
-collection_time = args.time
-
-# Define the experiments based on provided parameters
-experiments = {
-    "Baseline": {"bw": 42, "rtt": 20, "bdp_mult": 1},
-    "Low_Bandwidth": {"bw": 6, "rtt": 20, "bdp_mult": 1},
-    "High_RTT": {"bw": 12, "rtt": 80, "bdp_mult": 1},
-    "Large_Queue": {"bw": 12, "rtt": 20, "bdp_mult": 10},
-    "Mixed_Conditions": {"bw": 42, "rtt": 30, "bdp_mult": 2},
-    "Challenging_Network": {"bw": 6, "rtt": 100, "bdp_mult": 1},
-    "Challenging_Network_2": {"bw": 12, "rtt": 30, "bdp_mult": 0.5},
-}
 
 if args.experiment is not None:
-    test_exp = {exp: experiments[exp] for exp in args.experiment}
+    test_exp = {exp: Experiment(exp) for exp in args.experiment}
 else:
-    test_exp = experiments
+    test_exp = Experiment.experiments()
 
+if not args.proto:
+    protos = utils.parse_protocols_config().keys()
+else:
+    protos = args.proto
 
+print(protos)
 # Iterate over experiments and run each one
 for exp_name, exp_settings in test_exp.items():
-    for protocol in args.proto:
+    for protocol in protos:
         # Print protocol information
         print(f"Running {protocol} | Experiment: {exp_name}")
 
@@ -46,8 +40,8 @@ for exp_name, exp_settings in test_exp.items():
             cmd = ["python"] + \
                 ["src/run_collection.py", "--proto", protocol] + \
                 [ 
-                "--time",
-                str(collection_time), 
+                "--steps",
+                str(args.steps), 
                 "--bdp_mult",
                 str(exp_settings["bdp_mult"]),
                 "--rtt",
@@ -82,9 +76,9 @@ for exp_name, exp_settings in test_exp.items():
         if retries == max_retries:
             raise RuntimeError(f'Failed to run subprocess for protocol {protocol} after {max_retries} attempts.')
 
-    if len(args.proto) > 1:
-        plt.plot_thr_multi(args.proto, exp_settings)
-        plt.plot_rtt_multi(args.proto, exp_settings)
-        plt.plot_reward_multi(args.proto, exp_settings)
+    if len(protos) > 1:
+        plt.plot_thr_multi(protos, exp_settings, args.steps)
+        plt.plot_rtt_multi(protos, exp_settings, args.steps)
+        plt.plot_reward_multi(protos, exp_settings, args.steps)
 
 print("\nAll experiments completed.")
