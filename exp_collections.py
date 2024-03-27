@@ -36,18 +36,17 @@ for exp_name, exp_settings in test_exp.items():
 
         # Loop to retry the subprocess in case of an error
         while retries < max_retries:
-
             cmd = ["python"] + \
                 ["src/run_collection.py", "--proto", protocol] + \
                 [ 
                 "--steps",
                 str(args.steps), 
                 "--bdp_mult",
-                str(exp_settings["bdp_mult"]),
+                str(exp_settings.bdp_mult),
                 "--rtt",
-                str(exp_settings["rtt"]),
+                str(exp_settings.rtt),
                 "--bw",
-                str(exp_settings["bw"]),
+                str(exp_settings.bw),
                 "--normalize" if args.normalize else None,
                 ]
             # Delete None arguments
