@@ -14,6 +14,7 @@ from comm.kernel_thread import KernelRequest
 from comm.netlink_communicator import NetlinkCommunicator
 import yaml
 from utilities.logger import Logger
+from utilities.change_detection import PageHinkley, ADWIN
 from comm.comm import ACTION_FLAG
 
 from collections import deque
@@ -22,10 +23,12 @@ ACTION_FLAG = 2
 
 class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
-    def __init__(self, observation_spec, action_spec, policies_id=None, net_params=None, batch_size=1, normalize_rw: bool = False, logger: bool = False):
+    def __init__(self, observation_spec, action_spec, policies_id=None, net_params=None, batch_size=1, normalize_rw: bool = False, change_detection: bool = False,
+                logger: bool = False):
         super(MabEnvironment, self).__init__(observation_spec, action_spec)
         self._action_spec = action_spec
         self._batch_size = batch_size
+
         # Load the configuration
         config = utils.parse_training_config()
         self.config = config
@@ -43,8 +46,8 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.zeta = config['reward']['zeta']
         self.kappa = config['reward']['kappa']
         self._params = net_params
-        self._thr_history = deque(maxlen=10)
-        self._rtt_history = deque(maxlen=10)
+        self._thr_history = deque(maxlen=1000)
+        self._rtt_history = deque(maxlen=1000)
 
         # Feature extractor
         self.feature_settings = utils.parse_features_config()
@@ -65,6 +68,11 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self._inv_map_proto = {v: k for k, v in self._map_proto.items()}
         self.crt_action = None
 
+        # Change detection: we keep a detector for each protocol to detect changes
+        self.detectors = None
+        if change_detection:
+            self.detectors = {int(self._map_proto[i]): ADWIN(delta=1e-8) for i in range(self._action_spec.maximum+1)}
+
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
         self.num_fields_kernel = config['num_fields_kernel']
@@ -83,7 +91,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.kernel_thread = KernelRequest(self.netlink_communicator, self.num_fields_kernel)
         self._init_communication()
 
-    def _observe(self):
+    def _observe(self, step_wait=None):
         s_tmp = np.array([])
         _log_tmp = []
         # state_n = np.array([])
@@ -101,10 +109,13 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
         # Block to kernel thread to avoid samples from the next protocol
         self.kernel_thread.enable()
+
+        if step_wait is None:
+            step_wait = self.step_wait
         
         # Read and record data for step_wait seconds
         start = time.time()
-        while float(time.time() - start) <= float(self.step_wait):
+        while float(time.time() - start) <= float(step_wait):
             # Empty the stats
             _feat_averages = []
             _feat_min = []
@@ -121,9 +132,11 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                     continue
             
             collected_data['thruput'] *= 1e-6  # bps -> Mbps
+            collected_data['rtt'] *= 10**-3  # us -> ms
+            collected_data['rtt_min'] *= 10**-3  # us -> ms
             
             # Filter corrupted samples
-            if collected_data['thruput'] > 10*self._params['bw'] or collected_data['rtt'] < self._params['rtt']*10**3: # Filter corrupted samples
+            if collected_data['thruput'] > 10*self._params['bw'] or collected_data['rtt'] < self._params['rtt']: # Filter corrupted samples
                 continue
             
             collected_data['loss_rate'] *= 0.01  # percentage -> ratio
@@ -144,6 +157,16 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
             self.feat_averages = np.array(_feat_averages)
             self.feat_min = np.array(_feat_min)
             self.feat_max = np.array(_feat_max)
+            
+            self._thr_history.append(collected_data['thruput'])
+            self._rtt_history.append(collected_data['rtt'])
+
+            # Each protocol is equipped with a change detector (ADWIN) to detect changes in the network
+            # When a protocol is run, at each step the corresponding window is updated with the average throughput value
+            # Throughput history is cleared when a change in the network is detected -> new max reward is computed in apply_action()
+            # We have to select all the actions to get the maximum throughput achievable (bandwidth estimation) and set the new max for the "new" network scenario
+            if self.detectors:
+                self.detectors[collected_data['crt_proto_id']].add_element(collected_data['thruput'])
 
             # if collected_data['now'] != curr_timestamp:
             # curr_kernel_features = np.divide(curr_kernel_features, num_msg)
@@ -161,6 +184,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                 # log_tmp = np.vstack((log_tmp, np.array(log_kernel_features).reshape(1, -1)))
 
         self.kernel_thread.disable()
+
         # Observation as a mean of the samples
         # Check if the crt_proto_id is the same for all the samples (it must be, otherwise is an error))
         self.log_values = np.mean(np.array(_log_tmp), axis=0).reshape(1, -1)
@@ -174,40 +198,76 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         if self._observation.shape[1] != self._observation_spec.shape[0]:
             raise ValueError('The number of features in the observation should match the observation spec.')
 
+        # We detect the change after the step_wait to collect all the samples on time
+        if self.detectors:
+            if self.detectors[collected_data['crt_proto_id']].detected_change():
+                print(f"Change detected at step {self.step_counter} | Thr: {collected_data['thruput']} | RTT: {collected_data['rtt']} | Loss: {collected_data['loss_rate']} | Proto: {collected_data['crt_proto_id']}")
+                self.update_network_params()
+                # reset all the detectors
+                # for detector in self.detectors.values():
+                #     detector.reset()
+
         return self._observation
+
+    def _change_cca(self, action):
+        msg = self.netlink_communicator.create_netlink_msg(
+            'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self._map_proto[action[0]]))
+        self.netlink_communicator.send_msg(msg)
 
     def _apply_action(self, action):
         # TODO Apply the action and get the reward. Here the reward is not the reward of the action selected, the the previous one
         self.crt_action = action
         # Change the CCA
-        msg = self.netlink_communicator.create_netlink_msg(
-                'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self._map_proto[action[0]]))
-        self.netlink_communicator.send_msg(msg)
+        self._change_cca(action)
         self._observation = self._observe() # Update the observation to get the fresh reward
 
         # Compute the reward given the mean of the collected samples as the observation (shape: (1, num_features))
-
         data = {name: value for name, value in zip(self.training_features, self._observation[0])}
         
-        if not self._normalize_rw:
-            reward = self._compute_reward(data['thruput'], data['loss_rate'], data['rtt'])
-        else:
-            reward = self._compute_normalize_reward(data['thruput'], data['loss_rate'], data['rtt'])
-
-        reward = np.array(reward).reshape(self.batch_size)
+        # Compute the reward. Absolute value of the reward is kept for logging.
+        reward = self._compute_reward(data['thruput'], data['loss_rate'], data['rtt'])
+        
+        # Log the single observation with the absolute reward
         if self.logger:
-            to_save = [self.epoch, self.step_counter] + [val for val in self.log_values[0]] + [reward[0]]
+            to_save = [self.epoch, self.step_counter] + [val for val in self.log_values[0]] + [reward]
             self.logger.log(to_save)
             self.step_counter+=1
-        return reward
+        
+        # Reward normalization
+        if self._normalize_rw:
+            if len(self._thr_history) > 0:
+                max_thr = max(self._thr_history)
+                min_rtt = min(self._rtt_history)
+            self._max_rw = self._compute_reward(max_thr, 0, min_rtt)
+            reward = reward/self._max_rw
 
+        reward = np.array(reward).reshape(self.batch_size)
+        
+        return reward
         
     def _compute_reward(self, thr, loss_rate, rtt):
         # Reward is normalized if the normalize_rw is true, otherwise max_rw = 1
-        return (pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6) )
-
-    def _compute_normalize_reward(self, thr, loss_rate, rtt):
-        return (pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-6) ) / self.max_rw
+        return (pow(abs((thr - self.zeta * loss_rate)), self.kappa) / (rtt*10**-3) )  # thr in Mbps; rtt in s
+    
+    def update_network_params(self):
+        # In the same step we "refresh" the value of the max reward by running all the actions and get the throughput of the network
+        # This approach will avoid that the reward is normalized with a value that is not the maximum achievable and the policy gets stuck on a suboptimal action
+        self._thr_history.clear()
+        self._rtt_history.clear()
+        for a in range(self._action_spec.maximum+1):
+            self._change_cca([a])
+            self.kernel_thread.enable()
+            time.sleep(0.1)
+            self.kernel_thread.disable()
+            while not self.kernel_thread.queue.empty():
+                _d = self._read_data()
+                _c_d = {feature: _d[i] for i, feature in enumerate(self.feature_names)}
+                thr = _c_d['thruput']*1e-6
+                rtt = _c_d['rtt']*1e-3
+                print("[DEBUG] Update: action", self._map_proto[a], "Thr: ", thr, "RTT: ", rtt)
+                if thr < 192 and rtt >= self._params['rtt']: # TODO remove the bw check here
+                    self._thr_history.append(thr)
+                    self._rtt_history.append(rtt)
 
     def enable_log_traces(self):
         self.allow_save = True
@@ -223,9 +283,9 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
       return list(map(int, split_data))
 
     def _read_data(self):
-      kernel_info = self.kernel_thread.queue.get()
-      self.kernel_thread.queue.task_done()
-      return kernel_info
+        kernel_info = self.kernel_thread.queue.get()
+        # self.kernel_thread.queue.task_done()
+        return kernel_info
     
     def _init_communication(self):
         if not self.initiated:
