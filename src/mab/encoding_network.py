@@ -8,7 +8,7 @@ class EncodingNetwork(encoding_network.EncodingNetwork):
         preprocessing_layers = tf.keras.models.Sequential(
             [tf.keras.layers.Dense(64, activation='relu'),
             tf.keras.layers.Reshape((1, 64)),
-            tf.keras.layers.GRU(128, return_sequences=True),
+            tf.keras.layers.GRU(1024, return_sequences=True),
             tf.keras.layers.Dense(self._encoding_dim, activation='relu')
             ]
         )
