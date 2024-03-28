@@ -25,6 +25,11 @@ class KernelRequest(threading.Thread):
         while not self.queue.empty():
             self.queue.get()
 
+    def read_data(self):
+        kernel_info = self.queue.get()
+        # self.kernel_thread.queue.task_done()
+        return kernel_info
+
     def run(self):
         while True:
             try:
