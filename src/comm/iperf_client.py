@@ -86,7 +86,6 @@ class IperfClient(threading.Thread):
         # Compute the queue size in packets (1500 is the MTU; the bdp is expressed in bytes)
         # q_size = (self.bdp_mult * bdp) // 1500
         # Print client comm parameters
-        print(f"[IPERF CLIENT] Mahimahi network scenario:\n rtt(ms) = {self.rtt}\n bw(Mbps) = {self.bw}\n q_size (pkts) = {self.q_size}")
         
         if self.bw_factor == 1:
             trace_d = f'wired{int(self.bw)}'
@@ -94,6 +93,9 @@ class IperfClient(threading.Thread):
         else: 
             trace_d = f'wired{int(self.bw)}-{self.bw_factor}x-d'
             trace_u = f'wired{int(self.bw)}-{self.bw_factor}x-u'
+        print(f"[IPERF CLIENT] Mahimahi network scenario:\n rtt(ms) = {self.rtt}\n bw(Mbps) = {self.bw}\n q_size (pkts) = {self.q_size}\n bw_factor = {self.bw_factor}\n")
+        print(f"[IPERF CLIENT] Mahimahi traces:\n D: {trace_d}\n U: {trace_u}\n")
+        
         cmd = ['mm-delay', str(int(self.rtt/2)),
                'mm-link', 
                f'{context.entry_dir}/traces/{trace_u}',
