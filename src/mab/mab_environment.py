@@ -96,9 +96,6 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         _log_tmp = []
         # state_n = np.array([])
         state = np.array([])
-        _feat_averages = []
-        _feat_min = []
-        _feat_max = []
         received_jiffies = 0
 
         # Callbacks data
@@ -345,5 +342,5 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
           This action is necessary only if the _reset() function shouldn't be overridden.
         """
         msg = self.netlink_communicator.create_netlink_msg(
-                'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self._map_proto[0]))
+                'SENDING ACTION', msg_flags=int(self._map_proto[0]), msg_seq=int(self._map_proto[0]))
         self.netlink_communicator.send_msg(msg)

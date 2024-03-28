@@ -1,5 +1,5 @@
 import os
-from src.mab.encoding_network import EncodingNetwork
+# from src.mab.encoding_network import EncodingNetwork
 from src.comm.kernel_thread import KernelRequest
 from src.comm.netlink_communicator import NetlinkCommunicator
 import src.utilities.utils as utils
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         parser.add_argument('--bdp_mult', '-q', default=1, type=int)
         parser.add_argument('--bw_factor', '-f', default=1, type=int)
         parser.add_argument('--train_steps', '-n', default=250, type=int)
-        parser.add_argument('--embeddings', '-e', action='store_true', default=True)
+        parser.add_argument('--embeddings', '-e', action='store_true', default=False)
         args = parser.parse_args()
         policies = args.proto
 
@@ -111,17 +111,6 @@ if __name__ == "__main__":
         log_features = utils.extend_features_with_stats(non_stat_features, stat_features)
         obs_size = len(non_stat_features) + len(stat_features)*3*3 + len(policies)-1 # one hot encoding of crt_proto_id
         window_sizes = feature_settings['window_sizes']
-
-        # Logger
-        now_str = utils.time_to_str()
-        if args.embeddings:
-                filename = f'{args.proto[0]}.bw{args.bw}x{args.bw_factor}.rtt{args.rtt}.bdp{args.bdp_mult}.steps{args.train_steps}.{now_str}.csv'
-        else:
-                filename = f'{args.proto[0]}.bw{args.bw}x{args.bw_factor}.rtt{args.rtt}.bdp{args.bdp_mult}_no_embeddings.{now_str}.csv'
-        csv_file = os.path.join(context.entry_dir, 'test_embeddings', 'log', 'loss', filename)
-        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
-        logger = Logger(csv_file=csv_file, 
-                columns=['step', 'reward', 'predicted', 'loss', 'thruput', 'loss_rate', 'rtt', 'proto'])
         
         # Reward
         zeta = config['reward']['zeta']
@@ -142,19 +131,47 @@ if __name__ == "__main__":
             dtype=tf.int32, shape=(), minimum=0, maximum=nchoices-1, name='action')
         observation_spec = tensor_spec.TensorSpec(
             shape=(obs_size,), dtype=tf.float32, name='observation')
-        encoding_dim = 32
+        encoding_dim = 16
         encoding_net = tf.keras.models.Sequential(
-            [tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Reshape((1, 64)),
-            tf.keras.layers.GRU(128, return_sequences=True),
-            tf.keras.layers.Dense(encoding_dim, activation='relu')
+            [   tf.keras.layers.Dense(64, activation='relu'),
+                tf.keras.layers.Reshape((1, 64)),
+                tf.keras.layers.GRU(256, return_sequences=True),
+                tf.keras.layers.Dense(encoding_dim, activation='relu')
             ])
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
-        encoding_net.compile(optimizer=optimizer, loss='mse')
-        encoding_net.build(input_shape=(None, obs_size))
-        encoding_net.summary()
+
+        if args.embeddings:
+                encoding_net.compile(optimizer=optimizer, loss='mse')
+                encoding_net.build(input_shape=(None, obs_size))
+                encoding_net.summary()
+                reward_predictor = tf.keras.layers.Dense(1)  # Output a single reward value
+        else:
+                encoding_net = tf.keras.models.Sequential([
+                        tf.keras.layers.Dense(64, activation='relu'),
+                        tf.keras.layers.Dense(128, activation='relu'),
+                        tf.keras.layers.Dense(encoding_dim, activation='relu'),
+                ])
+                encoding_net.compile(optimizer=optimizer, loss='mse')
+                encoding_net.build(input_shape=(None, obs_size))
+                encoding_net.summary()
+
         reward_predictor = tf.keras.layers.Dense(1)  # Output a single reward value
+
         training_features = utils.get_training_features(non_stat_features, stat_features, action_spec.maximum+1)
+
+
+        # Logger
+        now_str = utils.time_to_str()
+        if args.embeddings:
+                filename = f'{args.proto[0]}.bw{args.bw}x{args.bw_factor}.rtt{args.rtt}.bdp{args.bdp_mult}.steps{args.train_steps}.{now_str}.csv'
+        else:
+                filename = f'{args.proto[0]}.bw{args.bw}x{args.bw_factor}.rtt{args.rtt}.bdp{args.bdp_mult}_no_embeddings.{now_str}.csv'
+        csv_file = os.path.join(context.entry_dir, 'test_embeddings', 'log', 'loss', filename)
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        loss_logger = Logger(csv_file=csv_file, 
+                columns=['step', 'reward', 'predicted', 'loss', 'thruput', 'loss_rate', 'rtt', 'proto'])
+        embedding_file = os.path.join(context.entry_dir, 'test_embeddings', 'log', 'embeddings', f'embeddings_{args.proto[0]}.bw{args.bw}x{args.bw_factor}.rtt{args.rtt}.bdp{args.bdp_mult}.steps{args.train_steps}.{now_str}.csv')
+        embedding_logger = Logger(csv_file=embedding_file, columns=[f'emb_{i}' for i in range(encoding_dim)])
 
         # Loop
         step_cnt = 0
@@ -166,11 +183,11 @@ if __name__ == "__main__":
         thr_history = deque(maxlen=2000)
         rtt_history = deque(maxlen=2000)
         while step_cnt < 1500:
-                k_thread.enable()
+                # Empty the stats
+                s_tmp = np.array([])
                 start = time.time()
+                k_thread.enable()
                 while time.time() - start < 0.2:
-                        # Empty the stats
-                        s_tmp = np.array([])
                         _feat_averages = []
                         _feat_min = []
                         _feat_max = []
@@ -194,7 +211,6 @@ if __name__ == "__main__":
                         feat_extractor.update([val for name, val in collected_data.items() if name in stat_features])
                         feat_extractor.compute_statistics()
                         feat_statistics = feat_extractor.get_statistics()
-
                         for size in window_sizes:
                                 for feature in stat_features:
                                         _feat_averages.append(feat_statistics[size]['avg'][feature])
@@ -221,11 +237,10 @@ if __name__ == "__main__":
                                 s_tmp = np.vstack((s_tmp, np.array(data_tmp).reshape(1, -1)))
                 
                 k_thread.disable()
-                
-                if len(s_tmp) == 0:
-                        continue
+
+                # Average the collected data
                 _observation = np.array(np.mean(s_tmp, axis=0), dtype=np.float32).reshape(1, -1)
-                
+
                 # Compute reward
                 data = {name: value for name, value in zip(training_features, _observation[0])}
                 reward = compute_reward(kappa, zeta, data['thruput'], data['loss_rate'], data['rtt'])
@@ -248,13 +263,17 @@ if __name__ == "__main__":
                 
                 pred_rw = predicted_reward.numpy().reshape(-1, 1)[0][0]
                 loss_ = loss.numpy()[0][0]
-                
+
                 # Train the encoder only for train_steps steps
                 if step_cnt > train_steps:
                         train = False
                 if train:
+                        # if args.embeddings:        
                         gradients = tape.gradient(loss, encoding_net.trainable_variables + reward_predictor.trainable_variables)
                         optimizer.apply_gradients(zip(gradients, encoding_net.trainable_variables + reward_predictor.trainable_variables))
+                        # else:
+                        #         gradients = tape.gradient(loss, reward_predictor.trainable_variables)
+                        #         optimizer.apply_gradients(zip(gradients, reward_predictor.trainable_variables))
 
                 # Detect change
                 if detector.detected_change():
@@ -270,14 +289,20 @@ if __name__ == "__main__":
 
 
                 print(f"[STEP {step_cnt}] Avg Thr: ", data['thruput'], "| Max Thr: ", max_thr, "| Loss: ", data['loss_rate'], "| RTT: ", data['rtt'], "| Reward: ", norm_rw, 
-                "| Predicted Reward", predicted_reward.numpy().reshape(-1, 1)[0][0], "| Loss", loss.numpy()[0][0], "\n")
+                "| Predicted Reward", pred_rw, "| Loss", loss_, "\n")
                 step_cnt += 1
 
                 # Save the loss and reward for analysis
                 to_save = [step_cnt, norm_rw, pred_rw, loss_, data['thruput'], data['loss_rate'], data['rtt'], collected_data['crt_proto_id']]
-                logger.log(to_save)
+                loss_logger.log(to_save)
 
-                # Save the embeddings for analysis
+                # Save the last layer embeddings features
+                if args.embeddings:
+                        emb_to_save = embedding.numpy().reshape(-1)
+                        embedding_logger.log(emb_to_save)
+
+        # Save the embeddings for analysis
+        encoding_net.save_weights(os.path.join(logdir, 'weights', f'enc_{args.proto[0]}.bw{args.bw}x{args.bw_factor}.rtt{args.rtt}.bdp{args.bdp_mult}.steps{args.train_steps}.{now_str}.h5'))
 
         comm_manager.stop_iperf_communication()
-        comm_manager.close_kernel_communication()
+        # comm_manager.close_kernel_communication()

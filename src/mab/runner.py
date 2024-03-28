@@ -95,7 +95,7 @@ class MabRunner():
             alpha=0.5,
             gamma=0.9,
             encoding_network=encoding_net,
-            encoding_network_num_train_steps=10,
+            encoding_network_num_train_steps=30,
             encoding_dim=encoding_net.encoding_dim,
             optimizer= tf.keras.optimizers.Adam(learning_rate=1e-3),
         )

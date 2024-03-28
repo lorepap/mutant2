@@ -3,7 +3,7 @@ import threading
 import traceback
 import select
 
-from comm.netlink_communicator import NetlinkCommunicator
+from src.comm.netlink_communicator import NetlinkCommunicator
 
 
 class KernelRequest(threading.Thread):
@@ -20,6 +20,10 @@ class KernelRequest(threading.Thread):
 
     def disable(self):
         self.enabled = False
+
+    def empty_queue(self):
+        while not self.queue.empty():
+            self.queue.get()
 
     def run(self):
         while True:

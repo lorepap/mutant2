@@ -1,19 +1,19 @@
 class Experiment:
-    def __init__(self, name):
+    def __init__(self, name: str):
        
-        self.name = name
-        self.settings = self.experiments()[name]
+        self._name = name.lower()
+        self.settings = self.experiments()[self._name]
 
     @staticmethod
     def experiments():
         return  {
-            "Baseline": {"bw": 42, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
-            "Low_Bandwidth": {"bw": 6, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
-            "High_RTT": {"bw": 12, "rtt": 80, "bdp_mult": 1, "bw_factor": 1},
-            "Large_Queue": {"bw": 12, "rtt": 20, "bdp_mult": 10, "bw_factor": 1},
-            "Mixed_Conditions": {"bw": 42, "rtt": 30, "bdp_mult": 2, "bw_factor": 1},
-            "Challenging_Network": {"bw": 6, "rtt": 100, "bdp_mult": 1, "bw_factor": 1},
-            "Challenging_Network_2": {"bw": 12, "rtt": 30, "bdp_mult": 0.5, "bw_factor": 1},
+            "baseline": {"bw": 42, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
+            "low_bandwidth": {"bw": 6, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
+            "high_rtt": {"bw": 12, "rtt": 80, "bdp_mult": 1, "bw_factor": 1},
+            "large_queue": {"bw": 12, "rtt": 20, "bdp_mult": 10, "bw_factor": 1},
+            "mixed_conditions": {"bw": 42, "rtt": 30, "bdp_mult": 2, "bw_factor": 1},
+            "challenging": {"bw": 6, "rtt": 100, "bdp_mult": 1, "bw_factor": 1},
+            "challenging2": {"bw": 12, "rtt": 30, "bdp_mult": 0.5, "bw_factor": 1},
             "wired6": {"bw": 6, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
             "wired12": {"bw": 12, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
             "wired24": {"bw": 24, "rtt": 20, "bdp_mult": 1, "bw_factor": 1},
@@ -54,6 +54,10 @@ class Experiment:
     @property
     def bw_factor(self):
         return self.settings["bw_factor"]
+    
+    @property
+    def name(self):
+        return self._name
     
     def __str__(self):
         return self.name
