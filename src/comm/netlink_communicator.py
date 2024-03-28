@@ -28,6 +28,10 @@ class NetlinkCommunicator():
             cls._socket_obj = s
         return cls._socket_obj
 
+    def change_cca(self, protocol):
+        msg = self.create_netlink_msg(
+            'SENDING ACTION', msg_flags=2, msg_seq=protocol)
+        self.send_msg(msg)
 
     def close_socket(self):
         self.socket.close()

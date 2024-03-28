@@ -21,7 +21,7 @@ class KernelRequest(threading.Thread):
     def disable(self):
         self.enabled = False
 
-    def empty_queue(self):
+    def flush(self):
         while not self.queue.empty():
             self.queue.get()
 

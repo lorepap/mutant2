@@ -12,8 +12,8 @@ vegas:
   id: 5
 yeah:
   id: 6
-cdg:
-  id: 7
+# cdg:
+#   id: 7
 bic:
   id: 8
 htcp:

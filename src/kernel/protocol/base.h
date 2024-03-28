@@ -15,11 +15,18 @@ static void base_cong_avoid(struct sock *sk, __u32 ack, __u32 acked)
     tp->snd_cwnd = 10;
 }
 
+static void base_pkts_acked(struct sock *sk, const struct ack_sample *sample)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	tp->snd_cwnd = 10;
+}
+
 static struct tcp_congestion_ops tcp_base __read_mostly = {
 	.init		= base_init,
 	.ssthresh	= tcp_reno_ssthresh,
 	.undo_cwnd	= tcp_reno_undo_cwnd,
 	.cong_avoid	= base_cong_avoid,
+	.pkts_acked = base_pkts_acked,
 	.owner		= THIS_MODULE,
 	.name		= "base",
 };

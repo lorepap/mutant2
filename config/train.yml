@@ -1,5 +1,5 @@
-num_steps: 200
-steps_per_loop: 10
+num_steps: 1000
+steps_per_loop: 1
 num_features: 42
 num_fields_kernel: 14
 algorithm: 'NeuralLinUCB'
