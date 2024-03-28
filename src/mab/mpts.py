@@ -35,16 +35,16 @@ class MPTS:
         """
         print("Initializing protocols...")
         start = time.time()
-        while time.time() - start < 5: # 10 seconds
-            for arm in self.arms.keys():
-                print("Initializing protocol: ", arm)
+        for arm in self.arms.keys():
+            print("Initializing protocol: ", self.proto_names[int(self.arms[arm])])
+            while time.time() - start < 0.2: # 10 seconds
                 msg = self.net_channel.create_netlink_msg(
                         'SENDING ACTION', msg_flags=2, msg_seq=int(arm))
                 self.net_channel.send_msg(msg)
     
     def pull(self, arm):
         obs_list = []
-        self.net_channel.change_cca(int(arm))
+        self.net_channel.change_cca(int(self.arms[arm]))
         self.k_thread.enable()
         start = time.time()
         while time.time() - start < self.step_wait:
@@ -99,7 +99,7 @@ class MPTS:
             for i in active_arms:
                 for _ in range(n_j - (n_j - 1 if j > 0 else 0)): 
                     arm_index = i
-                    reward = self.pull(self.arms[arm_index])
+                    reward = self.pull(arm_index)
                     # print("Arm ", self.arms[arm_index], " reward: ", reward)
                     arm_counts[arm_index] += 1
                     arm_rewards[arm_index] += reward
@@ -131,4 +131,3 @@ class MPTS:
                 print("\n")
                 k_remaining -= 1
         return accepted
-
