@@ -19,7 +19,7 @@ END_COMM_FLAG = 0
 # Base class for Trainer
 class CommManager():
 
-    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=12, bdp_mult=1, bw_factor=1) -> None:
+    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=48, bdp_mult=1, bw_factor=1) -> None:
         
         self.time = client_time if client_time else 86400
         self.log_dir = log_dir_name
@@ -35,7 +35,9 @@ class CommManager():
 
         self.init_proto()
 
-        self.netlink_communicator = NetlinkCommunicator()
+        # Netlink Comm object to start and close the communication with the kernel
+        # Note that the close_communication() method leads to a weird behavior. Avoid using it and let the kernel thread exiting by itself (timeout).
+        self.netlink_communicator = NetlinkCommunicator() 
         self.client: IperfClient = None
         self.server: IperfServer = None
         # self.moderator: Moderator = Moderator(self.args.iperf == 1)
