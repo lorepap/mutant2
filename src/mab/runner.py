@@ -87,19 +87,18 @@ class MabRunner():
         action_spec = tensor_spec.BoundedTensorSpec(
             dtype=tf.int32, shape=(), minimum=0, maximum=self.nchoices-1, name='action')
 
-        
         # TF Agent
         encoding_net = EncodingNetwork(observation_spec=observation_spec, encoding_dim=32)
         self.agent = NeuralUCBMabAgent(time_step_spec=time_step_spec, 
             action_spec=action_spec,
-            alpha=0.5,
+            alpha=0.1,
             gamma=0.9,
             encoding_network=encoding_net,
             encoding_network_num_train_steps=30,
             encoding_dim=encoding_net.encoding_dim,
             optimizer= tf.keras.optimizers.Adam(learning_rate=1e-3),
         )
-        
+
         # self.agent = LinTSMabAgent(
         #     time_step_spec=time_step_spec,
         #     action_spec=action_spec,
@@ -136,7 +135,7 @@ class MabRunner():
 
     def stop_communication(self):
         self.cm.stop_iperf_communication()
-        self.cm.close_kernel_communication()
+        # self.cm.close_kernel_communication()
         self.environment.close()
 
     def make_paths(self):

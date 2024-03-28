@@ -283,7 +283,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         kernel_info = self.kernel_thread.queue.get()
         # self.kernel_thread.queue.task_done()
         return kernel_info
-    
+
     def _init_communication(self):
         if not self.initiated:
             print("Initiating communication...")
