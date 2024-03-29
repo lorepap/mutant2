@@ -87,13 +87,15 @@ if __name__ == "__main__":
         
         map_proto = {i: proto_config[p]['id'] for i, p in enumerate(policies)}
         # MPTS
-        mpts = MPTS(arms=map_proto, k=2, T=100, thread=k_thread, net_channel=comm_manager.netlink_communicator)
+        mpts = MPTS(arms=map_proto, k=5, T=25, thread=k_thread, net_channel=comm_manager.netlink_communicator)
         set_initial_protocol(comm_manager.netlink_communicator, map_proto)
         mpts.initialize_protocols()
         while step_cnt < 1500:
-                arms = mpts.mpts()      
+                start_cmp_time = time.time()
+                arms = mpts.mpts()
                 # Expected outcome: the arms selected should be the same for the same trace
                 print(f"Selected arms: {arms}")
+                print(f"Time taken: {time.time() - start_cmp_time}")
                 step_cnt+=1
         
         comm_manager.stop_iperf_communication()
