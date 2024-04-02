@@ -10,7 +10,6 @@ import logging
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from comm.netlink_communicator import NetlinkCommunicator
 import utilities.context as context
 import re
 
@@ -27,8 +26,13 @@ def str_to_time(time: str) -> datetime:
 def parse_protocols_config():
     with open(os.path.join(context.entry_dir, 'config/protocols.yml')) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
+
 def parse_features_config():
     with open(os.path.join(context.entry_dir, 'config/features.yml')) as config:
+        return yaml.load(config, Loader=yaml.BaseLoader)
+    
+def parse_mpts_config():
+    with open(os.path.join(context.entry_dir, 'config/mpts.yml')) as config:
         return yaml.load(config, Loader=yaml.BaseLoader)
 
 def parse_pantheon_protocols_config():
@@ -51,22 +55,6 @@ def parse_training_config():
 def np_encoder(self, object):
         if isinstance(object, np.generic):
             return object.item()
-
-def get_number_of_actions(comm: NetlinkCommunicator) -> int:
-    response = comm.receive_msg()
-    data = comm.read_netlink_msg(response)
-    data_decoded = data.decode('utf-8')
-    split_data = data_decoded.split(';')
-
-    nchoices = int(split_data[0])
-    protocols = {}
-
-    for index, entry in enumerate(split_data):
-        if index > 0 and entry != '':
-            protocolKey = entry.split(':')
-            protocols[protocolKey[1]] = int(protocolKey[0])
-
-    return nchoices, protocols
 
 
 def get_fullpath(file: str) -> str:
@@ -153,14 +141,39 @@ def log_settings(filename: str, settings: dict, status: str = False, training_ti
     log_message = json.dumps(settings)
     logger.info(log_message)
 
-def update_log(filename, settings, status, training_time):
+def update_log(filename, settings, status, training_time, global_step):
     with open(filename, 'r') as file:
         logs = [json.loads(log) for log in file.readlines()]
 
     timestamp = settings.get("timestamp")
     index = next((i for i, log in enumerate(logs) if log.get("timestamp") == timestamp), None)
     if index is not None:
-        logs[index].update({"status": status, "training_time": training_time})
+        logs[index].update({"status": status, "global_step": global_step, "training_time": training_time})
 
     with open(filename, 'w') as file:
         file.writelines(json.dumps(log) + '\n' for log in logs)
+
+def get_latest_ckpt_dir(settings):
+    # Load settings.json
+    filename = os.path.join(context.entry_dir, 'log/mab/settings.json')
+    with open(filename, 'r') as file:
+        logs = [json.loads(log) for log in file.readlines()]
+    # Search for the latest entry with the same settings
+    for log in reversed(logs):
+        s_bw = settings.get("bw")
+        s_rtt = settings.get("rtt")
+        s_bdp_mult = settings.get("bdp_mult")
+        s_bw_factor = settings.get("bw_factor")
+        s_actions = sorted([int(a) for a in settings.get("action_mapping").keys()])
+        log_bw = log.get("bw")
+        log_rtt = log.get("rtt")
+        log_bdp_mult = log.get("bdp_mult")
+        log_bw_factor = log.get("bw_factor")
+        log_actions = sorted([int(a) for a in log.get("action_mapping").keys()])
+        
+        if s_bw == log_bw and s_rtt == log_rtt and s_bdp_mult == log_bdp_mult and s_bw_factor == log_bw_factor and s_actions == log_actions:
+            return log.get("checkpoint_dir")
+
+    # Get the checkpoint directory from the entry
+
+    # return the checkpoint directory
