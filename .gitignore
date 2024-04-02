@@ -205,3 +205,9 @@ log/iperf/*
 log/mab/model/*
 log/mab/run/*
 log/mab/*
+
+# External
+sage/
+test_mpts/log/
+test_embeddings/log
+analysis/plots/
