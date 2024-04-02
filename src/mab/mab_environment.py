@@ -18,12 +18,14 @@ from utilities.change_detection import PageHinkley, ADWIN
 from comm.comm import ACTION_FLAG
 
 from collections import deque
+from src.mab.mpts import MPTS
 
 ACTION_FLAG = 2
 
 class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
-    def __init__(self, observation_spec, action_spec, policies_id=None, net_params=None, batch_size=1, normalize_rw: bool = False, change_detection: bool = False,
+    def __init__(self, observation_spec, action_spec, policies_id=None, net_params=None, 
+                 batch_size=1, normalize_rw: bool = False, change_detection: bool = False,
                 logger: bool = False):
         super(MabEnvironment, self).__init__(observation_spec, action_spec)
         self._action_spec = action_spec
@@ -91,6 +93,11 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.kernel_thread = KernelRequest(self.netlink_communicator, self.num_fields_kernel)
         self._init_communication()
 
+        # MPTS
+        mpts_config = utils.parse_mpts_config()
+        self.mpts = MPTS(arms=self._map_proto, k=int(mpts_config['K']), T=int(mpts_config['T']), thread=self.kernel_thread, 
+                net_channel=self.netlink_communicator)
+
     def _observe(self, step_wait=None):
         s_tmp = np.array([])
         _log_tmp = []
@@ -129,11 +136,11 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                     continue
             
             collected_data['thruput'] *= 1e-6  # bps -> Mbps
-            collected_data['rtt'] *= 10**-3  # us -> ms
-            collected_data['rtt_min'] *= 10**-3  # us -> ms
+            collected_data['rtt'] *= 1e-3  # us -> ms
+            collected_data['rtt_min'] *= 1e-3  # us -> ms
             
             # Filter corrupted samples
-            if collected_data['thruput'] > 10*self._params['bw'] or collected_data['rtt'] < self._params['rtt']: # Filter corrupted samples
+            if collected_data['thruput'] > 192 or collected_data['rtt'] < self._params['rtt']: # Filter corrupted samples
                 continue
             
             collected_data['loss_rate'] *= 0.01  # percentage -> ratio
@@ -200,9 +207,9 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
             if self.detectors[collected_data['crt_proto_id']].detected_change():
                 print(f"Change detected at step {self.step_counter} | Thr: {collected_data['thruput']} | RTT: {collected_data['rtt']} | Loss: {collected_data['loss_rate']} | Proto: {collected_data['crt_proto_id']}")
                 self.update_network_params()
-                # reset all the detectors
-                # for detector in self.detectors.values():
-                #     detector.reset()
+                # Here we run the MPTS algorithm
+                self.mpts.run()                
+
 
         return self._observation
 
@@ -344,3 +351,18 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         msg = self.netlink_communicator.create_netlink_msg(
                 'SENDING ACTION', msg_flags=int(self._map_proto[0]), msg_seq=int(self._map_proto[0]))
         self.netlink_communicator.send_msg(msg)
+
+    def initialize_protocols(self):
+        """
+        We leave the protocol to run for a short period of time to update its internal parameters.
+        """
+        self.proto_config = utils.parse_protocols_config() # for debug (protocol names)
+        self.proto_names = {int(self.proto_config[p]['id']): p for p in self.proto_config.keys()}
+        print("Initializing protocols...")
+        for arm, proto_id in self._map_proto.items():
+            print("Initializing protocol: ", self.proto_names[int(proto_id)])
+            start = time.time()
+            while time.time() - start < 0.3: # 10 seconds
+                msg = self.netlink_communicator.create_netlink_msg(
+                        'SENDING ACTION', msg_flags=2, msg_seq=int(proto_id))
+                self.netlink_communicator.send_msg(msg)
