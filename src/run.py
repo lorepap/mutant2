@@ -6,7 +6,7 @@ def run(args):
     # TODO: handle the params with a config file
     # Runner does not need the netlink comm channel for runtime communication anymore
     # Runner declare and passes the comm channel obj to the environment class
-    runner = MabRunner(args.proto, int(args.rtt), int(args.bw), int(args.bdp_mult))
+    runner = MabRunner(args.proto, int(args.rtt), int(args.bw), int(args.bdp_mult), int(args.bw_factor), restore=args.restore)
     runner.setup_communication()
     runner.train()
     runner.stop_communication()
@@ -20,5 +20,7 @@ if __name__ == '__main__':
     parser.add_argument("--bw", '-bw', type=int, default=12, help="Bandwidth (Mbps)")
     parser.add_argument("--rtt", '-rtt', type=int, default=20, help="RTT (ms)")
     parser.add_argument("--bdp_mult", '-bdp_mult', type=float, default=1, help="BDP multiplier")
+    parser.add_argument("--bw_factor", '-bw_factor', type=float, default=1, help="Bandwidth factor")
+    parser.add_argument("--restore", '-r', action='store_true', help="Restore last checkpoint")
     args = parser.parse_args()
     run(args)

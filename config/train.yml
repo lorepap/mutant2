@@ -1,4 +1,4 @@
-num_steps: 1000
+num_steps: 2
 steps_per_loop: 1
 num_features: 42
 num_fields_kernel: 14

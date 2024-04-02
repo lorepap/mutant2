@@ -13,3 +13,4 @@ sudo insmod tcp_bic.ko
 sudo insmod tcp_htcp.ko
 sudo insmod tcp_highspeed.ko
 sudo insmod tcp_illinois.ko
+sudo insmod tcp_pcc.ko
