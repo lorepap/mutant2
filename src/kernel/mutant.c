@@ -44,6 +44,7 @@ extern struct tcp_congestion_ops bic;
 extern struct tcp_congestion_ops htcp;
 extern struct tcp_congestion_ops tcp_highspeed;
 extern struct tcp_congestion_ops tcp_illinois;
+// extern struct tcp_congestion_ops tcp_pcc_cong_ops;
 extern struct tcp_congestion_ops tcp_base;
 extern struct tcp_congestion_ops tcp_base2;
 
@@ -60,6 +61,7 @@ struct mutant_state {
     struct htcp *htcp_state;
     struct hstcp *highspeed_state;
     struct illinois *illinois_state;
+    struct pcc_data *pcc_state;
     // Add more pointers for other congestion control schemes as needed
 };
 
@@ -67,7 +69,6 @@ struct mutant_state {
 static struct mutant_state *saved_states;
 // Pointe to a general state
 static void *crt_state;
-
 
 // Netlink comm APIs
 static void send_msg(char *message, int socketId)
@@ -183,6 +184,9 @@ static void end_connection(struct nlmsghdr *nlh)
         if (saved_states->illinois_state) {
             kfree(saved_states->illinois_state);
         }
+        if (saved_states->pcc_state) {
+            kfree(saved_states->pcc_state);
+        }
         kfree(saved_states);
     }
     
@@ -274,6 +278,7 @@ static void init_saved_states(void) {
     saved_states->htcp_state = NULL;
     saved_states->highspeed_state = NULL;
     saved_states->illinois_state = NULL;
+    saved_states->pcc_state = NULL;
     // Initialize other pointers as needed
 }
 
@@ -486,6 +491,18 @@ static void save_state(struct sock *sk) {
                 pr_err("Failed to allocate memory for illinois_state\n");
             }
             break;
+        case PCC:
+            if (saved_states->pcc_state) {
+                kfree(saved_states->pcc_state);
+            }
+            saved_states->pcc_state = kmalloc(sizeof(struct pcc_data), GFP_KERNEL);
+            if (saved_states->pcc_state) {
+                memcpy(saved_states->pcc_state, inet_csk_ca(sk), sizeof(struct pcc_data));
+                // saved_states->pcc_state->cwnd = tp->snd_cwnd;
+            } else {
+                pr_err("Failed to allocate memory for pcc_state\n");
+            }
+            break;
         default:
             break;
     }
@@ -506,6 +523,7 @@ static void load_state(struct sock *sk){
     struct tcp_congestion_ops *tcp_htcp;
     struct tcp_congestion_ops *highspeed;
     struct tcp_congestion_ops *illinois;
+    // struct tcp_congestion_ops *pcc;
     cubic = &cubictcp;
     hybla = &tcp_hybla;
     bbr = &tcp_bbr_cong_ops;
@@ -518,6 +536,7 @@ static void load_state(struct sock *sk){
     tcp_htcp = &htcp;
     highspeed = &tcp_highspeed;
     illinois = &tcp_illinois;
+    // pcc = &tcp_pcc_cong_ops;
 
     struct tcp_sock *tp = tcp_sk(sk);
 
@@ -700,6 +719,20 @@ static void load_state(struct sock *sk){
             memcpy(saved_states->illinois_state, inet_csk_ca(sk), sizeof(struct illinois));
         }
         break;
+    // case PCC:
+    //     if (saved_states->pcc_state) {
+    //         // tp->snd_cwnd = saved_states->pcc_state->cwnd;
+    //         // printk("%s: Loading PCC state.", __FUNCTION__);
+    //         memcpy(inet_csk_ca(sk), saved_states->pcc_state, sizeof(struct pcc_data));
+    //     }
+    //     else{
+    //         // printk("%s: Initializing PCC state", __FUNCTION__);
+    //         saved_states->pcc_state = kmalloc(sizeof(struct pcc_data), GFP_KERNEL);
+    //         memcpy(inet_csk_ca(sk), saved_states->pcc_state, sizeof(struct pcc_data));
+    //         pcc->init(sk);
+    //         memcpy(saved_states->pcc_state, inet_csk_ca(sk), sizeof(struct pcc_data));
+    //     }
+        break;
     default:
         break;
     }
@@ -759,6 +792,10 @@ void mutant_switch_congestion_control(void) {
         // printk(KERN_INFO "Switching to Illinois (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_illinois;
         break;
+    // case PCC:
+    //     // printk(KERN_INFO "Switching to PCC (ID: %d)", selected_proto_id);
+    //     mutant_wrapper.current_ops = &tcp_pcc_cong_ops;
+    //     break;
     case BASE:
         // printk(KERN_INFO "Switching to Base (ID: %d)", selected_proto_id);
         mutant_wrapper.current_ops = &tcp_base;

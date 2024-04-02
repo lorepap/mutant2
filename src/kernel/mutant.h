@@ -3,6 +3,8 @@
 
 #include <linux/netlink.h>
 #include <net/tcp.h>
+
+// Include the user-defined TCP algorithms
 #include "protocol/base.h"
 #include "protocol/base2.h"
 
@@ -27,8 +29,9 @@
 #define HTCP 9
 #define HIGHSPEED 10
 #define ILLINOIS 11
-#define BASE 12
-#define BASE2 13
+#define PCC 12
+#define BASE 13
+#define BASE2 14
 
 
 struct mutant_info {
@@ -263,6 +266,58 @@ struct illinois {
 	u16	acked;		/* # packets acked by current ACK */
 	u8	rtt_above;	/* average rtt has gone above threshold */
 	u8	rtt_low;	/* # of rtts measurements below threshold */
+};
+
+enum PCC_DECISION {
+	PCC_RATE_UP,
+	PCC_RATE_DOWN,
+	PCC_RATE_STAY,
+};
+
+enum PCC_MODE {
+	PCC_SLOW_START, 
+	PCC_DECISION_MAKING,
+	PCC_RATE_ADJUSMENT,
+	PCC_LOSS, /* When tcp is in loss state, its stats can't be trusted */
+};
+
+/* Contains the statistics from one "experiment" interval */
+struct pcc_interval {
+	u64 rate;
+
+	u32 segs_sent_start;
+	u32 segs_sent_end;
+
+	s64 utility;
+	u32 lost;
+	u32 delivered;
+};
+
+
+struct pcc_data {
+	struct pcc_interval *intervals;
+	struct pcc_interval *single_interval;
+	int send_index;
+	int recive_index;
+
+	enum PCC_MODE mode;
+	u64 rate;
+	u64 last_rate;
+	u32 epsilon;
+	bool wait_mode;
+
+	enum PCC_DECISION last_decision;
+	u32 lost_base;
+	u32 delivered_base;
+
+	// debug helpers
+	int id;
+	int intervals_count;
+
+	u32 segs_sent;
+	u32 packets_counted;
+	u32 double_counted;
+
 };
 
 
