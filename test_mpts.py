@@ -61,6 +61,8 @@ if __name__ == "__main__":
         parser.add_argument('--bw', '-b', default=12, type=int)
         parser.add_argument('--bdp_mult', '-q', default=1, type=int)
         parser.add_argument('--bw_factor', '-f', default=1, type=int)
+        parser.add_argument('-T', '-t', default=100, type=int)
+        parser.add_argument('-K', '-k', default=5, type=int)
         args = parser.parse_args()
 
         # Config
@@ -82,17 +84,16 @@ if __name__ == "__main__":
         k_thread = KernelThread(comm_manager, config['num_fields_kernel'])
 
         # Loop
-        step_wait = config['step_wait_seconds']
         step_cnt = 0
         
         map_proto = {i: proto_config[p]['id'] for i, p in enumerate(policies)}
         # MPTS
-        mpts = MPTS(arms=map_proto, k=5, T=25, thread=k_thread, net_channel=comm_manager.netlink_communicator)
+        mpts = MPTS(arms=map_proto, k=args.K, T=args.T, thread=k_thread, net_channel=comm_manager.netlink_communicator)
         set_initial_protocol(comm_manager.netlink_communicator, map_proto)
         mpts.initialize_protocols()
         while step_cnt < 1500:
                 start_cmp_time = time.time()
-                arms = mpts.mpts()
+                arms = mpts.run()
                 # Expected outcome: the arms selected should be the same for the same trace
                 print(f"Selected arms: {arms}")
                 print(f"Time taken: {time.time() - start_cmp_time}")

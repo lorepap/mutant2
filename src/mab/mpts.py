@@ -3,6 +3,7 @@ from src.comm.kernel_thread import KernelRequest
 from src.utilities import utils
 from src.comm.netlink_communicator import NetlinkCommunicator
 import time
+import random 
 
 class MPTS:
     def __init__(self, arms: dict, k: int, T: int, thread: KernelRequest, net_channel: NetlinkCommunicator):
@@ -23,31 +24,20 @@ class MPTS:
         self.net_channel = net_channel
         self.proto_config = utils.parse_protocols_config() # for debug (protocol names)
         self.proto_names = {int(self.proto_config[p]['id']): p for p in self.proto_config.keys()}
-        self.step_wait = 0.2
+        self.step_wait = 0.05 # seconds
+        print("MPTS initialiazed with arms: ", self.arms, " k: ", self.k, " T: ", self.T, " step_wait: ", self.step_wait, " proto_names: ", self.proto_names)
 
     def compute_reward(self, kappa, zeta, thr, loss_rate, rtt):
         # Reward is normalized if the normalize_rw is true, otherwise max_rw = 1
         return (pow(abs((thr - zeta * loss_rate)), kappa) / (rtt*10**-3) )  # thr in Mbps; rtt in s
-
-    def initialize_protocols(self):
-        """
-        We leave the protocol to run for a short period of time to update its internal parameters.
-        """
-        print("Initializing protocols...")
-        start = time.time()
-        for arm in self.arms.keys():
-            print("Initializing protocol: ", self.proto_names[int(self.arms[arm])])
-            while time.time() - start < 0.2: # 10 seconds
-                msg = self.net_channel.create_netlink_msg(
-                        'SENDING ACTION', msg_flags=2, msg_seq=int(arm))
-                self.net_channel.send_msg(msg)
     
     def pull(self, arm):
         obs_list = []
         self.net_channel.change_cca(int(self.arms[arm]))
         self.k_thread.enable()
         start = time.time()
-        while time.time() - start < self.step_wait:
+        # while time.time() - start < self.step_wait:
+        while len(obs_list) < 10: # 5 samples
             obs = self.k_thread.read_data()
             obs_list.append(obs)
         self.k_thread.disable()
@@ -60,7 +50,7 @@ class MPTS:
         thr = data['thruput']*10**-6 # bps to Mbps
         loss_rate = data['loss_rate']*10**-2 # % to fraction
         rtt = data['rtt']*10**-3 # us to ms
-        print("Protocol: ", self.proto_names[int(self.arms[arm])], "thr: ", thr, " loss rate: ", loss_rate, " rtt: ", rtt, " cwnd", data['cwnd'])
+        # print("Protocol: ", self.proto_names[int(self.arms[arm])], "thr: ", thr, " loss rate: ", loss_rate, " rtt: ", rtt, " cwnd", data['cwnd'])
         reward = self.compute_reward(kappa=2, zeta=5, thr=thr, loss_rate=loss_rate, rtt=rtt) # absolute value
         return reward
 
@@ -71,7 +61,7 @@ class MPTS:
     def compute_n_j(self, j, n):
         return int((self.T - n) / (n + 1 - j) * (1 / self.log_bar()))
 
-    def mpts(self):
+    def run(self):
         """
         Implements the MPTS algorithm to select the best k arms.
 
@@ -95,14 +85,21 @@ class MPTS:
             arm_counts = np.zeros(n)  # Number of times each arm has been pulled
             arm_rewards = np.zeros(n)  # Sum of rewards for each arm
 
-            # Pull active arms for n_j - n_{j-1} rounds
-            for i in active_arms:
+            # Pull a random arm from the active arms for n_j - n_{j-1} rounds
+            # We randomize the selection to avoid dependencies between consecutive protocols
+            for _ in active_arms:
                 for _ in range(n_j - (n_j - 1 if j > 0 else 0)): 
-                    arm_index = i
-                    reward = self.pull(arm_index)
-                    # print("Arm ", self.arms[arm_index], " reward: ", reward)
-                    arm_counts[arm_index] += 1
-                    arm_rewards[arm_index] += reward
+                    # Create a copy of active_arms to work with 
+                    active_arms_copy = active_arms.copy()
+                    while active_arms_copy:  
+                        arm_index = random.choice(active_arms_copy)
+                        reward = self.pull(arm_index)
+                        # print("Arm ", self.arms[arm_index], " reward: ", reward)
+                        arm_counts[arm_index] += 1
+                        arm_rewards[arm_index] += reward
+
+                        # Remove the used arm to prevent repetition in the next iteration
+                        active_arms_copy.remove(arm_index) 
 
             # Calculate empirical means and gaps
             empirical_means = arm_rewards[active_arms] / arm_counts[active_arms]
@@ -125,9 +122,5 @@ class MPTS:
 
             if empirical_means[order[deactivated_index]] > empirical_means[order[k_remaining]]:
                 accepted.append(self.arms[deactivated_arm])
-                print("STEP: ", j)
-                print(f"Accepted arm: {self.proto_names[int(self.arms[deactivated_arm])]}")
-                print("Empirical mean: ", empirical_means)
-                print("\n")
                 k_remaining -= 1
         return accepted
