@@ -10,9 +10,6 @@
 #include <net/tcp.h>
 #include <linux/random.h>
 
-#include "mutant.h"
-
-
 /* Ignore the first and last packets of every interval because they might
  * contain data of the previous / next interval. */
 static const u32 pcc_ignore_packets = 5;
@@ -50,33 +47,57 @@ static const u32 pcc_max_loss = 10;
 static const s32 pcc_slow_start_threshold = 750;
 static const s32 pcc_slow_start_threshold_base = 1000;
 
+enum PCC_DECISION {
+	PCC_RATE_UP,
+	PCC_RATE_DOWN,
+	PCC_RATE_STAY,
+};
+
+enum PCC_MODE {
+	PCC_SLOW_START, 
+	PCC_DECISION_MAKING,
+	PCC_RATE_ADJUSMENT,
+	PCC_LOSS, /* When tcp is in loss state, its stats can't be trusted */
+};
+
+/* Contains the statistics from one "experiment" interval */
+struct pcc_interval {
+	u64 rate;
+
+	u32 segs_sent_start;
+	u32 segs_sent_end;
+
+	s64 utility;
+	u32 lost;
+	u32 delivered;
+};
 
 static int id = 0;
-// struct pcc_data {
-// 	struct pcc_interval *intervals;
-// 	struct pcc_interval *single_interval;
-// 	int send_index;
-// 	int recive_index;
+struct pcc_data {
+	struct pcc_interval *intervals;
+	struct pcc_interval *single_interval;
+	int send_index;
+	int recive_index;
 
-// 	enum PCC_MODE mode;
-// 	u64 rate;
-// 	u64 last_rate;
-// 	u32 epsilon;
-// 	bool wait_mode;
+	enum PCC_MODE mode;
+	u64 rate;
+	u64 last_rate;
+	u32 epsilon;
+	bool wait_mode;
 
-// 	enum PCC_DECISION last_decision;
-// 	u32 lost_base;
-// 	u32 delivered_base;
+	enum PCC_DECISION last_decision;
+	u32 lost_base;
+	u32 delivered_base;
 
-// 	// debug helpers
-// 	int id;
-// 	int intervals_count;
+	// debug helpers
+	int id;
+	int intervals_count;
 
-// 	u32 segs_sent;
-// 	u32 packets_counted;
-// 	u32 double_counted;
+	u32 segs_sent;
+	u32 packets_counted;
+	u32 double_counted;
 
-// };
+};
 
 /*********************
  * Getters / Setters *
@@ -111,7 +132,7 @@ static void pcc_set_cwnd(struct sock *sk)
 
 
 /* was the pcc struct fully inited */
-static bool pcc_valid(struct arm *pcc)
+static bool pcc_valid(struct pcc_data *pcc)
 {
 	return (pcc && pcc->intervals);
 }
@@ -119,7 +140,7 @@ static bool pcc_valid(struct arm *pcc)
 /******************
  * Intervals init *
  * ****************/
-static void pcc_setup_decision_making_intervals(struct arm *pcc)
+static void pcc_setup_decision_making_intervals(struct pcc_data *pcc)
 {
 	u64 rate_low, rate_high;
 	char rand;
@@ -146,9 +167,9 @@ static void pcc_setup_decision_making_intervals(struct arm *pcc)
 	}
 }
 
-static void pcc_setup_intervals(struct arm *pcc)
+static void pcc_setup_intervals(struct pcc_data *pcc)
 {
-	switch (pcc->mimic_mode) {
+	switch (pcc->mode) {
 	case PCC_DECISION_MAKING:
 		pcc_setup_decision_making_intervals(pcc);
 		break;
@@ -163,7 +184,7 @@ static void pcc_setup_intervals(struct arm *pcc)
 	pcc->wait_mode = false;
 }
 
-static void pcc_start_interval(struct sock *sk, struct arm *pcc)
+static void pcc_start_interval(struct sock *sk, struct pcc_data *pcc)
 {
 	struct pcc_interval *interval;
 	u64 rate = pcc->rate;
@@ -243,14 +264,14 @@ static void pcc_calc_utility(struct pcc_interval *interval)
 	interval->utility = util;
 }
 
-static void pcc_increase_epsilon(struct arm *pcc)
+static void pcc_increase_epsilon(struct pcc_data *pcc)
 {
 	if (pcc->epsilon < pcc_epsilon_max)
 		pcc->epsilon++;
 }
 
 static enum PCC_DECISION
-pcc_get_decision(struct arm *pcc, u64 new_rate)
+pcc_get_decision(struct pcc_data *pcc, u64 new_rate)
 {
 	if (pcc->rate == new_rate)
 		return PCC_RATE_STAY;
@@ -259,7 +280,7 @@ pcc_get_decision(struct arm *pcc, u64 new_rate)
 }
 
 static void
-pcc_change_epsilon_after_dicision(struct arm *pcc, u64 new_rate)
+pcc_change_epsilon_after_dicision(struct pcc_data *pcc, u64 new_rate)
 {
 	enum PCC_DECISION decision = pcc_get_decision(pcc, new_rate);
 
@@ -271,7 +292,7 @@ pcc_change_epsilon_after_dicision(struct arm *pcc, u64 new_rate)
 	pcc->last_decision = decision;
 }
 
-static u64 pcc_decide_rate(struct arm *pcc)
+static u64 pcc_decide_rate(struct pcc_data *pcc)
 {
 	bool run_1_res, run_2_res, did_agree;
 
@@ -282,7 +303,7 @@ static u64 pcc_decide_rate(struct arm *pcc)
 	did_agree = !((run_1_res == run_2_res) ^ 
 		    (pcc->intervals[0].rate == pcc->intervals[2].rate));
 	if (did_agree)
-		pcc->mimic_mode = PCC_RATE_ADJUSMENT;
+		pcc->mode = PCC_RATE_ADJUSMENT;
 
 	if (did_agree)
 		return run_1_res ? pcc->intervals[0].rate :
@@ -291,7 +312,7 @@ static u64 pcc_decide_rate(struct arm *pcc)
 		return pcc->rate;
 }
 
-static void pcc_decide(struct arm *pcc, struct tcp_sock *tsk)
+static void pcc_decide(struct pcc_data *pcc, struct tcp_sock *tsk)
 {
 	u64 new_rate;
 	int i;
@@ -310,7 +331,7 @@ static void pcc_decide(struct arm *pcc, struct tcp_sock *tsk)
 		printk(KERN_INFO "%d decide: stay %lld (%d) %d\n", pcc->id,
 			pcc->rate, pcc->intervals_count, pcc_get_rtt(tsk));
 
-	if (pcc->mimic_mode == PCC_RATE_ADJUSMENT) {
+	if (pcc->mode == PCC_RATE_ADJUSMENT) {
 		pcc->last_rate = new_rate;
 		pcc->rate = new_rate;
 		new_rate *= pcc->epsilon;
@@ -324,7 +345,7 @@ static void pcc_decide(struct arm *pcc, struct tcp_sock *tsk)
 }
 
 
-static void pcc_decide_rate_adjusment(struct arm *pcc)
+static void pcc_decide_rate_adjusment(struct pcc_data *pcc)
 {
 	struct pcc_interval *interval = pcc->single_interval;
 	s64 prev, extra_rate;
@@ -345,7 +366,7 @@ static void pcc_decide_rate_adjusment(struct arm *pcc)
 	} else {
 		pcc->rate = pcc->last_rate;
 		pcc->epsilon = pcc_epsilon_min;
-		pcc->mimic_mode = PCC_DECISION_MAKING;
+		pcc->mode = PCC_DECISION_MAKING;
 		printk(KERN_INFO "%d: adj mode ended\n", pcc->id);
 	}
 	pcc->intervals_count++;
@@ -359,7 +380,7 @@ static s64 pcc_adjust_utility(s64 utility, u32 rate, bool threshold)
 	return utility * (threshold ? pcc_slow_start_threshold_base :
 					pcc_slow_start_threshold) / rate;
 }
-static void pcc_decide_slow_start(struct arm *pcc, struct tcp_sock *tsk)
+static void pcc_decide_slow_start(struct pcc_data *pcc, struct tcp_sock *tsk)
 {
 	struct pcc_interval *interval = pcc->single_interval;
 	s64 adjust_utility, prev_adjust_utility;
@@ -382,7 +403,7 @@ static void pcc_decide_slow_start(struct arm *pcc, struct tcp_sock *tsk)
 		pcc->rate += extra_rate;
 	} else {
 		pcc->rate = pcc->last_rate;
-		pcc->mimic_mode = PCC_DECISION_MAKING;
+		pcc->mode = PCC_DECISION_MAKING;
 		printk(KERN_INFO "%d: start mode ended\n", pcc->id);
 	}
 }
@@ -393,11 +414,11 @@ static void pcc_decide_slow_start(struct arm *pcc, struct tcp_sock *tsk)
  * find interval per sample
  * ************************/
 bool send_interval_ended(struct pcc_interval *interval, struct tcp_sock *tsk,
-			 struct arm *pcc)
+			 struct pcc_data *pcc)
 {
 	int segs_sent = tsk->data_segs_out - interval->segs_sent_start;
 
-	if (pcc->mimic_mode != PCC_DECISION_MAKING)
+	if (pcc->mode != PCC_DECISION_MAKING)
 		segs_sent += pcc_ignore_packets;
 
 	if (segs_sent < pcc_interval_min_segs)
@@ -411,25 +432,25 @@ bool send_interval_ended(struct pcc_interval *interval, struct tcp_sock *tsk,
 }
 
 bool recive_interval_ended(struct pcc_interval *interval,
-			   struct tcp_sock *tsk, struct arm *pcc)
+			   struct tcp_sock *tsk, struct pcc_data *pcc)
 {
 	return interval->segs_sent_end &&
 	       interval->segs_sent_end - pcc_ignore_packets <
 							pcc->packets_counted;
 }
 
-static void start_next_send_interval(struct sock *sk, struct arm *pcc)
+static void start_next_send_interval(struct sock *sk, struct pcc_data *pcc)
 {
 	pcc->send_index++;
 	if (pcc->send_index == pcc_intervals ||
-	    pcc->mimic_mode != PCC_DECISION_MAKING)
+	    pcc->mode != PCC_DECISION_MAKING)
 		pcc->wait_mode = true;
 
 	pcc_start_interval(sk, pcc);
 }
 
 static void
-pcc_update_interval(struct pcc_interval *interval,  struct arm *pcc,
+pcc_update_interval(struct pcc_interval *interval,  struct pcc_data *pcc,
 		    struct sock *sk, const struct rate_sample *rs)
 {
 	interval->lost += tcp_sk(sk)->lost - pcc->lost_base;
@@ -438,7 +459,7 @@ pcc_update_interval(struct pcc_interval *interval,  struct arm *pcc,
 
 static void pcc_process_sample(struct sock *sk, const struct rate_sample *rs)
 {
-	struct arm *pcc = inet_csk_ca(sk);
+	struct pcc_data *pcc = inet_csk_ca(sk);
 	struct tcp_sock *tsk = tcp_sk(sk);
 	struct pcc_interval *interval;
 	int index;
@@ -448,7 +469,7 @@ static void pcc_process_sample(struct sock *sk, const struct rate_sample *rs)
 		return;
 
 	pcc_set_cwnd(sk);
-	if (pcc->mimic_mode == PCC_LOSS)
+	if (pcc->mode == PCC_LOSS)
 		goto end;
 
 	if (!pcc->wait_mode) {
@@ -471,7 +492,7 @@ static void pcc_process_sample(struct sock *sk, const struct rate_sample *rs)
 	
 	if (recive_interval_ended(interval, tsk, pcc)) {
 		pcc->recive_index++;
-		switch (pcc->mimic_mode) {
+		switch (pcc->mode) {
 		case PCC_SLOW_START:
 			pcc_decide_slow_start(pcc, tsk);
 			break;
@@ -498,7 +519,7 @@ end:
 
 static void pcc_init(struct sock *sk)
 {
-	struct arm *pcc = inet_csk_ca(sk);
+	struct pcc_data *pcc = inet_csk_ca(sk);
 
 	pcc->intervals = kzalloc(sizeof(struct pcc_interval) *pcc_intervals,
 				 GFP_KERNEL);
@@ -514,7 +535,7 @@ static void pcc_init(struct sock *sk)
 	pcc->rate = pcc_rate_minimum*512;
 	pcc->last_rate = pcc_rate_minimum*512;
 	tcp_sk(sk)->snd_ssthresh = TCP_INFINITE_SSTHRESH;
-	pcc->mimic_mode = PCC_SLOW_START;
+	pcc->mode = PCC_SLOW_START;
 	pcc->intervals[0].utility = S64_MIN;
 
 	pcc_setup_intervals(pcc);
@@ -524,7 +545,7 @@ static void pcc_init(struct sock *sk)
 
 static void pcc_release(struct sock *sk)
 {
-	struct arm *pcc = inet_csk_ca(sk);
+	struct pcc_data *pcc = inet_csk_ca(sk);
 
 	kfree(pcc->intervals);
 }
@@ -544,7 +565,7 @@ static u32 pcc_ssthresh(struct sock *sk)
 
 static void pcc_set_state(struct sock *sk, u8 new_state)
 {
-	struct arm *pcc = inet_csk_ca(sk);
+	struct pcc_data *pcc = inet_csk_ca(sk);
 	struct tcp_sock *tsk = tcp_sk(sk);
 	s32 double_counted;
 
@@ -556,7 +577,7 @@ static void pcc_set_state(struct sock *sk, u8 new_state)
 	 * pcc saves the diff between the counters in order to resulves these
 	 * diffs in the future
 	 */
-	if (pcc->mimic_mode == PCC_LOSS && new_state != TCP_CA_Loss) {
+	if (pcc->mode == PCC_LOSS && new_state != TCP_CA_Loss) {
 		double_counted = tsk->delivered + tsk->lost+
 				 tcp_packets_in_flight(tsk);
 		double_counted -= tsk->data_segs_out;
@@ -565,12 +586,12 @@ static void pcc_set_state(struct sock *sk, u8 new_state)
 		printk(KERN_INFO "%d loss ended: double_counted %d\n",
 		       pcc->id, double_counted);
 
-		pcc->mimic_mode = PCC_DECISION_MAKING;
+		pcc->mode = PCC_DECISION_MAKING;
 		pcc_setup_intervals(pcc);
 		pcc_start_interval(sk, pcc);
-	} else if (pcc->mimic_mode != PCC_LOSS && new_state  == TCP_CA_Loss) {
+	} else if (pcc->mode != PCC_LOSS && new_state  == TCP_CA_Loss) {
 		printk(KERN_INFO "%d loss: started\n", pcc->id);
-		pcc->mimic_mode = PCC_LOSS;
+		pcc->mode = PCC_LOSS;
 		pcc->wait_mode = true;
 		pcc_start_interval(sk, pcc);
 	} else {
@@ -595,41 +616,41 @@ static void pcc_cwnd_event(struct sock *sk, enum tcp_ca_event event)
 {
 }
 
-// static struct tcp_congestion_ops tcp_pcc_cong_ops __read_mostly = {
-//         .flags = TCP_CONG_NON_RESTRICTED,
-//         .name = "pcc",
-//         .owner = THIS_MODULE,
-//         .init = pcc_init,
-//         .release        = pcc_release,
-//         .cong_control = pcc_process_sample,
-//         /* Keep the windows static */
-//         .undo_cwnd = pcc_undo_cwnd,
-//         /* Slow start threshold will not exist */
-//         .ssthresh = pcc_ssthresh,
-//         .set_state	= pcc_set_state,
-//         .cong_avoid = pcc_cong_avoid,
-//         .pkts_acked = pcc_pkts_acked,
-//         .in_ack_event = pcc_ack_event,
-//         .cwnd_event	= pcc_cwnd_event,
-// };
-
+static struct tcp_congestion_ops tcp_pcc_cong_ops __read_mostly = {
+        .flags = TCP_CONG_NON_RESTRICTED,
+        .name = "pcc",
+        .owner = THIS_MODULE,
+        .init = pcc_init,
+        .release        = pcc_release,
+        .cong_control = pcc_process_sample,
+        /* Keep the windows static */
+        .undo_cwnd = pcc_undo_cwnd,
+        /* Slow start threshold will not exist */
+        .ssthresh = pcc_ssthresh,
+        .set_state	= pcc_set_state,
+        .cong_avoid = pcc_cong_avoid,
+        .pkts_acked = pcc_pkts_acked,
+        .in_ack_event = pcc_ack_event,
+        .cwnd_event	= pcc_cwnd_event,
+};
+EXPORT_SYMBOL(tcp_pcc_cong_ops);
 /* Kernel module section */
 
-// static int __init pcc_register(void)
-// {
-//         BUILD_BUG_ON(sizeof(struct arm) > ICSK_CA_PRIV_SIZE);
-// 	printk(KERN_INFO "pcc init reg\n");
-//         return tcp_register_congestion_control(&tcp_pcc_cong_ops);
-// }
+static int __init pcc_register(void)
+{
+        BUILD_BUG_ON(sizeof(struct pcc_data) > ICSK_CA_PRIV_SIZE);
+	printk(KERN_INFO "pcc init reg\n");
+        return tcp_register_congestion_control(&tcp_pcc_cong_ops);
+}
 
-// static void __exit pcc_unregister(void)
-// {
-//         tcp_unregister_congestion_control(&tcp_pcc_cong_ops);
-// }
+static void __exit pcc_unregister(void)
+{
+        tcp_unregister_congestion_control(&tcp_pcc_cong_ops);
+}
 
-// module_init(pcc_register);
-// module_exit(pcc_unregister);
+module_init(pcc_register);
+module_exit(pcc_unregister);
 
-// MODULE_AUTHOR("Nogah Frankel <nogah.frankel@gmail.com>");
-// MODULE_LICENSE("Dual BSD/GPL");
-// MODULE_DESCRIPTION("TCP PCC (Performance-oriented Congestion Control)");
+MODULE_AUTHOR("Nogah Frankel <nogah.frankel@gmail.com>");
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_DESCRIPTION("TCP PCC (Performance-oriented Congestion Control)");
