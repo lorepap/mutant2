@@ -4,9 +4,10 @@ from src.utilities import utils
 from src.comm.netlink_communicator import NetlinkCommunicator
 import time
 import random 
+from tqdm import tqdm
 
 class MPTS:
-    def __init__(self, arms: dict, k: int, T: int, thread: KernelRequest, net_channel: NetlinkCommunicator):
+    def __init__(self, arms: dict, k: int, T: int, step_wait: float, thread: KernelRequest, net_channel: NetlinkCommunicator):
         """
         Initializes the MPTS algorithm.
 
@@ -24,8 +25,8 @@ class MPTS:
         self.net_channel = net_channel
         self.proto_config = utils.parse_protocols_config() # for debug (protocol names)
         self.proto_names = {int(self.proto_config[p]['id']): p for p in self.proto_config.keys()}
-        self.step_wait = 0.05 # seconds
-        print("MPTS initialiazed with arms: ", self.arms, " k: ", self.k, " T: ", self.T, " step_wait: ", self.step_wait, " proto_names: ", self.proto_names)
+        self.step_wait = step_wait # seconds
+        # print("MPTS initialized with arms: ", self.arms, " k: ", self.k, " T: ", self.T, " step_wait: ", self.step_wait, " proto_names: ", self.proto_names)
 
     def compute_reward(self, kappa, zeta, thr, loss_rate, rtt):
         # Reward is normalized if the normalize_rw is true, otherwise max_rw = 1
@@ -80,14 +81,16 @@ class MPTS:
         k_remaining = self.k  
 
         # Phases of the algorithm
-        for j in range(n - 1):
+        print("Running MPTS algorithm...")
+        for j in tqdm(range(n - 1)):
+            print(f"Phase {j + 1}/{n - 1}")
             n_j = self.compute_n_j(j, n)
             arm_counts = np.zeros(n)  # Number of times each arm has been pulled
             arm_rewards = np.zeros(n)  # Sum of rewards for each arm
 
             # Pull a random arm from the active arms for n_j - n_{j-1} rounds
             # We randomize the selection to avoid dependencies between consecutive protocols
-            for _ in active_arms:
+            for _ in tqdm(active_arms):
                 for _ in range(n_j - (n_j - 1 if j > 0 else 0)): 
                     # Create a copy of active_arms to work with 
                     active_arms_copy = active_arms.copy()
@@ -123,4 +126,5 @@ class MPTS:
             if empirical_means[order[deactivated_index]] > empirical_means[order[k_remaining]]:
                 accepted.append(self.arms[deactivated_arm])
                 k_remaining -= 1
+        print("MPTS algorithm completed.")
         return accepted
