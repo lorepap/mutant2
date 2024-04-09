@@ -114,7 +114,7 @@ def extend_features_with_stats(all_features, stat_features):
                 all_features.extend([f"{stat_feature}_{w_size}_avg", f"{stat_feature}_{w_size}_min", f"{stat_feature}_{w_size}_max"])
     return all_features
 
-def get_training_features(all_features, stat_features, n_actions):
+def get_training_features(all_features, stat_features, pool_size):
     # all_feature does not need to be modified
     all_features = [f for f in all_features.copy() if f not in 'crt_proto_id']
     # Iterate through train_stat_features
@@ -125,7 +125,7 @@ def get_training_features(all_features, stat_features, n_actions):
                 # Append additional statistical features to all_features
                 all_features.extend([f"{stat_feature}_{w_size}_avg", f"{stat_feature}_{w_size}_min", f"{stat_feature}_{w_size}_max"])
     # One hot encoding features. N_actions = 2**n_features, so n_features= log2(n_actions)
-    all_features.extend([f"arm_{i}" for i in range(n_actions)])
+    all_features.extend([f"arm_{i}" for i in range(pool_size)])
     return all_features
 
 def log_settings(filename: str, settings: dict, status: str = False, training_time: str = "") -> None:
@@ -164,16 +164,22 @@ def get_latest_ckpt_dir(settings):
         s_rtt = settings.get("rtt")
         s_bdp_mult = settings.get("bdp_mult")
         s_bw_factor = settings.get("bw_factor")
-        s_actions = sorted([int(a) for a in settings.get("action_mapping").keys()])
+        # s_actions = sorted([int(a) for a in settings.get("action_mapping").keys()])
         log_bw = log.get("bw")
         log_rtt = log.get("rtt")
         log_bdp_mult = log.get("bdp_mult")
         log_bw_factor = log.get("bw_factor")
-        log_actions = sorted([int(a) for a in log.get("action_mapping").keys()])
+        # log_actions = sorted([int(a) for a in log.get("action_mapping").keys()])
         
-        if s_bw == log_bw and s_rtt == log_rtt and s_bdp_mult == log_bdp_mult and s_bw_factor == log_bw_factor and s_actions == log_actions:
+        if s_bw == log_bw and s_rtt == log_rtt and s_bdp_mult == log_bdp_mult and s_bw_factor == log_bw_factor:
             return log.get("checkpoint_dir")
 
-    # Get the checkpoint directory from the entry
-
-    # return the checkpoint directory
+def get_actions_from_experiment(timestamp):
+    # Load settings.json
+    filename = os.path.join(context.entry_dir, 'log/mab/settings.json')
+    with open(filename, 'r') as file:
+        logs = [json.loads(log) for log in file.readlines()]
+    # Search for the latest entry with the same settings
+    for log in logs:
+        if log.get("timestamp") == timestamp:
+            return log.get("action_mapping")

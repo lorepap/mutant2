@@ -92,6 +92,7 @@ class SwitchingTestRunner():
         current_cca_index = 0
         step_time = 1 # waiting time in seconds between each switch
         start_exp = time.time()
+        self.kernel_thread.enable()
         while time.time() - start_exp < self.running_time:
             start = time.time()
             # Every time we send a random protocol

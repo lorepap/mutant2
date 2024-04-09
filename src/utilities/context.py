@@ -4,6 +4,7 @@ import sys
 
 src_dir = path.abspath(path.join(path.dirname(__file__), os.pardir))
 entry_dir = src_dir.replace("/src", "")
+log_dir = src_dir + "/log"
 collection_dir = src_dir + "/collection"
 sys.path.append(entry_dir)
 
