@@ -18,35 +18,36 @@ from utilities.change_detection import PageHinkley, ADWIN
 from comm.comm import ACTION_FLAG
 
 from collections import deque
-from src.mab.mpts import MPTS
 
 ACTION_FLAG = 2
 
 class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
-    def __init__(self, observation_spec, action_spec, policies_id=None, net_params=None, 
+    def __init__(self, observation_spec, action_spec, net_params=None, 
                  batch_size=1, normalize_rw: bool = False, change_detection: bool = False,
-                logger: bool = False):
+                ):
         super(MabEnvironment, self).__init__(observation_spec, action_spec)
         self._action_spec = action_spec
         self._batch_size = batch_size
+        self.n_actions = int(self._action_spec.maximum+1)
 
         # Load the configuration
-        config = utils.parse_training_config()
-        self.config = config
+        self.config = utils.parse_training_config()
+        self.proto_config = utils.parse_protocols_config()
 
         # Step counter
-        self.num_steps = config['num_steps']
-        self.step_counter = 0
+        self.num_steps = self.config['num_steps']
+        self._step_counter = 0
+        self.crt_action = None
 
         # Reward
         self._normalize_rw = normalize_rw
         self.curr_reward = 0
         self.epoch = 0
         self.allow_save = False
-        self.step_wait = config['step_wait_seconds']
-        self.zeta = config['reward']['zeta']
-        self.kappa = config['reward']['kappa']
+        self.step_wait = self.config['step_wait_seconds']
+        self.zeta = self.config['reward']['zeta']
+        self.kappa = self.config['reward']['kappa']
         self._params = net_params
         self._thr_history = deque(maxlen=1000)
         self._rtt_history = deque(maxlen=1000)
@@ -58,45 +59,57 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         self.non_stat_features = self.feature_settings['train_non_stat_features']
         self.window_sizes = self.feature_settings['window_sizes']
         # self.training_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
-        self.training_features = utils.get_training_features(self.non_stat_features, self.stat_features, self._action_spec.maximum+1)
+        self.training_features = utils.get_training_features(all_features=self.non_stat_features, 
+                                stat_features=self.stat_features, pool_size=len(self.proto_config))
         self.feat_extractor = FeatureExtractor(self.stat_features, self.window_sizes) # window_sizes=(10, 200, 1000)
-
-        # Define action and observation space
-        self.proto_config = utils.parse_protocols_config()
-        if policies_id:
-            self._map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(policies_id)} # action: id mapping for subset of protocols
-        else:
-            self._map_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)} # action: id mapping for all protocols (subset not specified in the input)
-        self._inv_map_proto = {v: k for k, v in self._map_proto.items()}
-        self.crt_action = None
-
-        # Change detection: we keep a detector for each protocol to detect changes
-        self.detectors = None
-        if change_detection:
-            self.detectors = {int(self._map_proto[i]): ADWIN(delta=1e-8) for i in range(self._action_spec.maximum+1)}
 
         # Netlink communicator
         self.netlink_communicator = NetlinkCommunicator()
-        self.num_fields_kernel = config['num_fields_kernel']
+        self.num_fields_kernel = self.config['num_fields_kernel']
 
-        # Logger
-        self.now_str = utils.time_to_str()
-        csv_file = os.path.join(context.entry_dir, 'log', 'mab', 'run', f'run.{self.now_str}.csv')
-        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        # For the logger (The runner should invoke set_logger() to enable logging)
+        self.logger = None
         self.log_features = utils.extend_features_with_stats(self.non_stat_features, self.stat_features)
-        self.logger = Logger(csv_file=csv_file, 
-                        columns=['epoch', 'step']+self.log_features+['reward']) if logger else None
         self.initiated = False
         self.curr_reward = 0
-
+        self._timestamp = utils.time_to_str()
+        
         # Thread for kernel info
         self.kernel_thread = KernelRequest(self.netlink_communicator, self.num_fields_kernel)
         self._init_communication()
 
-        # MPTS
-        mpts_config = utils.parse_mpts_config()
-        self.mpts = MPTS(arms=self._map_proto, k=int(mpts_config['K']), T=int(mpts_config['T']), thread=self.kernel_thread, 
-                net_channel=self.netlink_communicator)
+        # MPTS: returns top-K arms given all protocols in the pool at each run
+        # We mantain the mapping of all the protocols for remapping after a change is detected (MPTS run)
+        self.map_all_proto = {i: self.proto_config[p]['id'] for i, p in enumerate(self.proto_config)}
+        self.inv_map_all_proto = {v: k for k, v in self.map_all_proto.items()} # protocol id -> action id
+        self._map_actions = None
+        self._inv_map_actions = None
+
+        # Change detection: we keep a detector for each of the protocols in the pool
+        self.detectors = None
+        if change_detection:
+            self.detectors = {int(i): ADWIN(delta=1e-9) for i in range(self.n_actions)}
+
+    # def initialize(self):
+    #     """
+    #     Initialize the environment with the first set of protocols to run.
+    #     MPTS algorithm is run first to select the first pool of K protocol.
+    #     This has to be run before the first step.
+    #     """
+    #     self._initialize_protocols()
+    #     time.sleep(0.5)
+    #     first_set = self.mpts.run()
+    #     print("[DEBUG] First set of protocols: ", [p for p in first_set])
+    #     self.map_actions = {i: int(p) for i, p in enumerate(first_set)} # action id -> protocol id
+    #     self.crt_action = None
+    #     return self.map_actions
+            
+    def set_logger(self):
+        csv_file = os.path.join(context.entry_dir, 'log', 'mab', 'run', f'run.{self._timestamp}.csv')
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        self.logger = Logger(csv_file=csv_file, columns=['epoch', 'step']+self.log_features+['reward'])
+        return self.logger
+
 
     def _observe(self, step_wait=None):
         s_tmp = np.array([])
@@ -112,6 +125,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         collected_data = {}
 
         # Block to kernel thread to avoid samples from the next protocol
+        self.kernel_thread.flush()
         self.kernel_thread.enable()
 
         if step_wait is None:
@@ -130,10 +144,10 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
             collected_data = {feature: data[i] for i, feature in enumerate(self.feature_names)}
             # print("[DEBUG] rtt", collected_data['rtt'])
             # print("[DEBUG] ACTION RECEIVED", collected_data['crt_proto_id'])
-            # Discard samples of another protocol
-            if self.crt_action:
-                if collected_data['crt_proto_id'] != int(self._map_proto[self.crt_action[0]]):
-                    continue
+            
+            # Discard samples of other protocols
+            if collected_data['crt_proto_id'] not in [int(p) for p in self._inv_map_actions.keys()]:
+                continue
             
             collected_data['thruput'] *= 1e-6  # bps -> Mbps
             collected_data['rtt'] *= 1e-3  # us -> ms
@@ -170,7 +184,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
             # Throughput history is cleared when a change in the network is detected -> new max reward is computed in apply_action()
             # We have to select all the actions to get the maximum throughput achievable (bandwidth estimation) and set the new max for the "new" network scenario
             if self.detectors:
-                self.detectors[collected_data['crt_proto_id']].add_element(collected_data['thruput'])
+                self.detectors[self._inv_map_actions[collected_data['crt_proto_id']]].add_element(collected_data['thruput'])
 
             # if collected_data['now'] != curr_timestamp:
             # curr_kernel_features = np.divide(curr_kernel_features, num_msg)
@@ -204,18 +218,22 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
 
         # We detect the change after the step_wait to collect all the samples on time
         if self.detectors:
-            if self.detectors[collected_data['crt_proto_id']].detected_change():
-                print(f"Change detected at step {self.step_counter} | Thr: {collected_data['thruput']} | RTT: {collected_data['rtt']} | Loss: {collected_data['loss_rate']} | Proto: {collected_data['crt_proto_id']}")
+            if self.detectors[self._inv_map_actions[collected_data['crt_proto_id']]].detected_change():
+                print(f"Change detected at step {self._step_counter} | Thr: {collected_data['thruput']} | RTT: {collected_data['rtt']} | Loss: {collected_data['loss_rate']} | Proto: {collected_data['crt_proto_id']}")
                 self.update_network_params()
-                # Here we run the MPTS algorithm
-                self.mpts.run()                
-
+                # if self._enable_mpts:
+                    # accepted_actions = self.mpts.run()
+                    # Remap new actions
+                    # self.map_actions = {i: int(a) for i, a in enumerate(accepted_actions)}
+                    # print("[DEBUG] New pool: ", [p for p in accepted_actions])
+            
+        self.kernel_thread.flush()
 
         return self._observation
 
     def _change_cca(self, action):
         msg = self.netlink_communicator.create_netlink_msg(
-            'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self._map_proto[action[0]]))
+            'SENDING ACTION', msg_flags=ACTION_FLAG, msg_seq=int(self._map_actions[action[0]]))
         self.netlink_communicator.send_msg(msg)
 
     def _apply_action(self, action):
@@ -233,9 +251,9 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         
         # Log the single observation with the absolute reward
         if self.logger:
-            to_save = [self.epoch, self.step_counter] + [val for val in self.log_values[0]] + [reward]
+            to_save = [self.epoch, self._step_counter] + [val for val in self.log_values[0]] + [reward]
             self.logger.log(to_save)
-            self.step_counter+=1
+            self._step_counter+=1
         
         # Reward normalization
         if self._normalize_rw:
@@ -268,7 +286,7 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
                 _c_d = {feature: _d[i] for i, feature in enumerate(self.feature_names)}
                 thr = _c_d['thruput']*1e-6
                 rtt = _c_d['rtt']*1e-3
-                print("[DEBUG] Update: action", self._map_proto[a], "Thr: ", thr, "RTT: ", rtt)
+                # print("[DEBUG] Update: action", self._map_proto[a], "Thr: ", thr, "RTT: ", rtt)
                 if thr < 192 and rtt >= self._params['rtt']: # TODO remove the bw check here
                     self._thr_history.append(thr)
                     self._rtt_history.append(rtt)
@@ -327,8 +345,11 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
         """
         Replace the crt_proto_id feature with its one_hot_encoded version
         """
-        one_hot_proto_id = self.one_hot_encode(self._inv_map_proto[str(data['crt_proto_id'])],
-                                self._action_spec.maximum+1).reshape(1, -1)
+        # The one hot encoding will be a vector of the same length as the number of protocols in the pool
+        # one_hot_proto_id = self.one_hot_encode(self._inv_map_actions[data['crt_proto_id']],
+        #                         len(self._inv_map_actions)).reshape(1, -1) 
+        one_hot_proto_id = self.one_hot_encode(self._inv_map_actions[data['crt_proto_id']],
+                                len(self.proto_config)).reshape(1, -1) 
         # Index of crt_proto_id in the collected data dict
         crt_proto_id_idx = self.log_features.index('crt_proto_id')
         # Store the kernel feature to append to the state
@@ -349,20 +370,31 @@ class MabEnvironment(bandit_py_environment.BanditPyEnvironment):
           This action is necessary only if the _reset() function shouldn't be overridden.
         """
         msg = self.netlink_communicator.create_netlink_msg(
-                'SENDING ACTION', msg_flags=int(self._map_proto[0]), msg_seq=int(self._map_proto[0]))
+                'SENDING ACTION', msg_flags=2, msg_seq=self._map_actions[0])
         self.netlink_communicator.send_msg(msg)
+    
 
-    def initialize_protocols(self):
-        """
-        We leave the protocol to run for a short period of time to update its internal parameters.
-        """
-        self.proto_config = utils.parse_protocols_config() # for debug (protocol names)
-        self.proto_names = {int(self.proto_config[p]['id']): p for p in self.proto_config.keys()}
-        print("Initializing protocols...")
-        for arm, proto_id in self._map_proto.items():
-            print("Initializing protocol: ", self.proto_names[int(proto_id)])
-            start = time.time()
-            while time.time() - start < 0.3: # 10 seconds
-                msg = self.netlink_communicator.create_netlink_msg(
-                        'SENDING ACTION', msg_flags=2, msg_seq=int(proto_id))
-                self.netlink_communicator.send_msg(msg)
+    @property
+    def step_counter(self):
+        return self._step_counter
+    
+    @step_counter.setter
+    def step_counter(self, value):
+        self._step_counter = value
+
+    @property
+    def map_actions(self):
+        return self._map_actions
+    
+    @map_actions.setter
+    def map_actions(self, value):
+        self._map_actions = value # actions -> protocols ID
+        self._inv_map_actions = {int(v): int(k) for k, v in self._map_actions.items()} # protocols ID -> actions
+
+    @property
+    def timestamp(self):
+        return self._timestamp
+    
+    @timestamp.setter
+    def timestamp(self, value):
+        self._timestamp = value
