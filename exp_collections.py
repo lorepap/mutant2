@@ -11,6 +11,7 @@ parser.add_argument("--steps", default=100, help="Experiment running time (s)")
 parser.add_argument("--proto", type=str, nargs='+', default=None, help="Protocol to use")
 parser.add_argument("--experiment", type=str, nargs='+', default=None, help="Experiment to run")
 parser.add_argument("--normalize", action='store_true', help="Normalize the reward")
+parser.add_argument("--no_logs", action='store_true', help="Log mahimahi output")
 args = parser.parse_args()
 
 if args.experiment is not None:
@@ -42,12 +43,15 @@ for exp_name, exp_settings in test_exp.items():
                 "--steps",
                 str(args.steps), 
                 "--bdp_mult",
-                str(exp_settings.bdp_mult),
+                str(exp_settings.get('bdp_mult')),
                 "--rtt",
-                str(exp_settings.rtt),
+                str(exp_settings.get('rtt')),
                 "--bw",
-                str(exp_settings.bw),
+                str(exp_settings.get('bw')),
+                "--bw_factor",
+                str(exp_settings.get('bw_factor')),
                 "--normalize" if args.normalize else None,
+                "--no-logs" if args.no_logs else None
                 ]
             # Delete None arguments
             cmd = [arg for arg in cmd if arg is not None]
@@ -68,16 +72,16 @@ for exp_name, exp_settings in test_exp.items():
                 print(traceback.format_exc())
                 raise RuntimeError(f'Unexpected error for protocol {protocol}')
 
-            plt.plot_thr_single(protocol, exp_settings)
-            plt.plot_rtt_single(protocol, exp_settings)
-            plt.plot_reward_single(protocol, exp_settings)
+            # plt.plot_thr_single(protocol, exp_settings)
+            # plt.plot_rtt_single(protocol, exp_settings)
+            # plt.plot_reward_single(protocol, exp_settings)
         
         if retries == max_retries:
             raise RuntimeError(f'Failed to run subprocess for protocol {protocol} after {max_retries} attempts.')
 
-    if len(protos) > 1:
-        plt.plot_thr_multi(protos, exp_settings, args.steps)
-        plt.plot_rtt_multi(protos, exp_settings, args.steps)
-        plt.plot_reward_multi(protos, exp_settings, args.steps)
+    # if len(protos) > 1:
+    #     # plt.plot_thr_multi(protos, exp_settings, args.steps)
+        # plt.plot_rtt_multi(protos, exp_settings, args.steps)
+        # plt.plot_reward_multi(protos, exp_settings, args.steps)
 
 print("\nAll experiments completed.")

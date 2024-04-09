@@ -1,3 +1,2 @@
-K: 1
-T: 25
-step_wait: 0.08
+T: 1000
+step_wait: 1
