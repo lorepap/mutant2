@@ -19,7 +19,8 @@ END_COMM_FLAG = 0
 # Base class for Trainer
 class CommManager():
 
-    def __init__(self, log_dir_name='log/iperf', client_time=None, rtt=20, bw=48, bdp_mult=1, bw_factor=1) -> None:
+    def __init__(self, k=None, log_dir_name='log/iperf', client_time=None, rtt=20, bw=48, bdp_mult=1, bw_factor=1,
+                 mahimahi_dir='log/mab/mahimahi', iperf_dir='log/iperf', log_mahimahi=True) -> None:
         
         self.time = client_time if client_time else 86400
         self.log_dir = log_dir_name
@@ -40,7 +41,12 @@ class CommManager():
         self.netlink_communicator = NetlinkCommunicator() 
         self.client: IperfClient = None
         self.server: IperfServer = None
+
         # self.moderator: Moderator = Moderator(self.args.iperf == 1)
+
+        self.client = IperfClient(self.min_rtt, 
+                self.bw, self.q_size, self.bw_factor, k, mahimahi_dir, iperf_dir, time=self.time,
+                log=log_mahimahi)
 
     def is_kernel_initialized(self) -> bool:
         cmd = ['cat', '/proc/sys/net/ipv4/tcp_congestion_control']
@@ -92,8 +98,10 @@ class CommManager():
         log_filename = f'{base_path}/json/{filename}'
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
 
-        self.client = IperfClient(self.time, log_filename, self.min_rtt, 
-                        self.bw, self.q_size, self.bw_factor)
+
+        os.makedirs(os.path.join(context.entry_dir), exist_ok=True)
+        
+        self.client.mahimahi_filename = f'log/collection/mahimahi/{tag}'
 
         try:
             self.client.start()
@@ -140,3 +148,4 @@ class CommManager():
     def stop_iperf_communication(self):
         # Client stops by itself?
         self.server.stop()
+

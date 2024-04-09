@@ -43,8 +43,8 @@ class IperfRunner():
                     '-t',
                     str(self.time),
                     '-J',
-                    '--logfile',
-                    self.log
+                    # '--logfile',
+                    # self.log
                 ]
 
                 cmd = ss_cmd + cmd

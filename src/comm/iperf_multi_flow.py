@@ -1,4 +1,6 @@
 """
+Subsequent and simultaneous iperf3 flow generation
+""""""
 Author: Lorenzo Pappone
 Year: 2023
 
@@ -24,35 +26,23 @@ import subprocess
 
 class IperfClient(threading.Thread):
 
-    def __init__(self, rtt, bw, q_size, bw_factor, k, mahimahi_dir, iperf_dir, time=86400, log=True) -> None:
+    def __init__(self, iperf_log_file=None, rtt=20, bw=12, q_size=100, bw_factor=1, mh_log_dir=None, n_flows=2) -> None:
         threading.Thread.__init__(self)
 
         self.ip = self._get_private_ip()
-        self.time = time
+        # self.time = time
+        self.log_file = iperf_log_file
+        self.mh_log_dir = mh_log_dir
+        os.makedirs(self.mh_log_dir, exist_ok=True)
         self.ps = None
         self.rtt = rtt
         self.bw = bw
         self.bw_factor = bw_factor
-        self.log = log
         # self.bdp_mult = bdp_mult
         self.q_size = q_size
         # self._pid_file = "src/tmp/pid.txt"
         # os.makedirs(self._pid_file, exist_ok=True)
-
-        self._mahimahi_dir = mahimahi_dir
-        self._iperf_dir = iperf_dir
-        os.makedirs(self._mahimahi_dir, exist_ok=True)
-        os.makedirs(self._iperf_dir, exist_ok=True)
-
-        if self.bw_factor == 1:
-            self._trace_d = f'wired{int(self.bw)}'
-            self._trace_u = self._trace_d
-        else: 
-            self._trace_d = f'wired{int(self.bw)}-{self.bw_factor}x-d'
-            self._trace_u = f'wired{int(self.bw)}-{self.bw_factor}x-u'
-
-        self._down_log_file = f"downlink-{self._trace_d}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x-{k}.log"
-        self._up_log_file = f"uplink-{self._trace_u}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x-{k}.log"
+        self.n_flows = n_flows
 
     def _get_private_ip(self):
         """
@@ -65,7 +55,6 @@ class IperfClient(threading.Thread):
         # pattern = r'inet (192(?:\.\d{1,3}){2}\.\d{1,3})'
         pattern = r'inet (?:addr:)?(10\.0\.2\.15)'       
         match = re.search(pattern, output)
-
         if match:
             # If a match is found, return the IP address
             ip_address = match.group(1)
@@ -96,55 +85,53 @@ class IperfClient(threading.Thread):
             raise Exception("Unable to set ipv4 forwarding")
 
     def _get_mahimahi_cmd(self):
-
         # bdp = int((self.rtt/2 * self.bw)/8) # Convert bits to bytes
         # Compute the queue size in packets (1500 is the MTU; the bdp is expressed in bytes)
         # q_size = (self.bdp_mult * bdp) // 1500
         # Print client comm parameters
-        
+        if self.bw_factor == 1:
+            trace_d = f'wired{int(self.bw)}'
+            trace_u = trace_d
+        else: 
+            trace_d = f'wired{int(self.bw)}-{self.bw_factor}x-d'
+            trace_u = f'wired{int(self.bw)}-{self.bw_factor}x-u'
         print(f"[IPERF CLIENT] Mahimahi network scenario:\n rtt(ms) = {self.rtt}\n bw(Mbps) = {self.bw}\n q_size (pkts) = {self.q_size}\n bw_factor = {self.bw_factor}\n")
-        print(f"[IPERF CLIENT] Mahimahi traces:\n D: {self._trace_d}\n U: {self._trace_u}\n")
+        print(f"[IPERF CLIENT] Mahimahi traces:\n D: {trace_d}\n U: {trace_u}\n")
+        down_log_file = os.path.join(self.mh_log_dir, f"downlink-{trace_d}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x.log")
+        up_log_file = os.path.join(self.mh_log_dir, f"uplink-{trace_u}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x.log")
         
         cmd = ['mm-delay', str(int(self.rtt/2)),
                'mm-link', 
-               f'{context.entry_dir}/traces/{self._trace_u}',
-               f'{context.entry_dir}/traces/{self._trace_d}',
+               f'{context.entry_dir}/traces/{trace_u}',
+               f'{context.entry_dir}/traces/{trace_d}',
                 '--uplink-queue=droptail',
                 f'--uplink-queue-args="packets={self.q_size}"',
                 '--downlink-queue=droptail', 
                 f'--downlink-queue-args="packets={self.q_size}"',
+                f'--uplink-log={up_log_file}', 
+                f'--downlink-log={down_log_file}'
                ]
-
-        if self.log:
-            cmd += [
-                f'--uplink-log={os.path.join(self._mahimahi_dir, self._up_log_file)}',
-                f'--downlink-log={os.path.join(self._mahimahi_dir, self._down_log_file)}'
-            ]
         print(cmd)
         return cmd
 
-    def _get_iperf_cmd(self):
-
+    def _get_iperf_cmd(self, time):
         return [
             'python3',
             'src/comm/iperf.py', #TODO: check if calling iperf.py is necessary
             self.ip,
-            str(self.time),
-            self._iperf_dir,
+            str(time),
+            self.log_file,
             '5201'
         ]
     
-
     def run(self) -> None:
         try:
-
             self._set_ip_forwarding()
-
+            for n in range(0, self.n_flows):
+                cmd = self._get_mahimahi_cmd() + self._get_iperf_cmd(time)
+                check_call(cmd)
             cmd = self._get_mahimahi_cmd() + self._get_iperf_cmd()
-            # print("[DEBUG] Command executing:", cmd)
-
             check_call(cmd)
-
             print("mahimahi experiment ran successfully\n")
 
         except Exception as _:
@@ -167,19 +154,4 @@ class IperfClient(threading.Thread):
     #                 print("Iperf client killed")
     #             # Remove the pid.txt file
     #             os.remove(self._pid_file)
-
-    @property
-    def up_log_file(self):
-        return self._up_log_file
-
-    @property
-    def down_log_file(self):
-        return self._down_log_file
-    
-    @up_log_file.setter
-    def up_log_file(self, value):
-        self._up_log_file = value
-
-    @down_log_file.setter
-    def down_log_file(self, value):
-        self._down_log_file = value
+        

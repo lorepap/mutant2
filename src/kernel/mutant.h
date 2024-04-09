@@ -5,8 +5,8 @@
 #include <net/tcp.h>
 
 // Include the user-defined TCP algorithms
-#include "protocol/base.h"
-#include "protocol/base2.h"
+// #include "protocol/base.h"
+// #include "protocol/base2.h"
 
 
 #define MAX_PAYLOAD 256
@@ -29,9 +29,9 @@
 #define HTCP 9
 #define HIGHSPEED 10
 #define ILLINOIS 11
-#define PCC 12
-#define BASE 13
-#define BASE2 14
+// #define PCC 12
+// #define BASE 13
+// #define BASE2 14
 
 
 struct mutant_info {

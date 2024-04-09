@@ -45,8 +45,8 @@ extern struct tcp_congestion_ops htcp;
 extern struct tcp_congestion_ops tcp_highspeed;
 extern struct tcp_congestion_ops tcp_illinois;
 // extern struct tcp_congestion_ops tcp_pcc_cong_ops;
-extern struct tcp_congestion_ops tcp_base;
-extern struct tcp_congestion_ops tcp_base2;
+// extern struct tcp_congestion_ops tcp_base;
+// extern struct tcp_congestion_ops tcp_base2;
 
 struct mutant_state {
     struct bictcp *cubic_state;
@@ -334,7 +334,7 @@ static void print_mutant_state(struct sock *sk) {
     // Add more conditions for other congestion control schemes as needed
 }
 ////////////////////////////////////////////////
-    
+
 
 // Function to save the state of a specific congestion control scheme
 static void save_state(struct sock *sk) {
@@ -491,18 +491,18 @@ static void save_state(struct sock *sk) {
                 pr_err("Failed to allocate memory for illinois_state\n");
             }
             break;
-        case PCC:
-            if (saved_states->pcc_state) {
-                kfree(saved_states->pcc_state);
-            }
-            saved_states->pcc_state = kmalloc(sizeof(struct pcc_data), GFP_KERNEL);
-            if (saved_states->pcc_state) {
-                memcpy(saved_states->pcc_state, inet_csk_ca(sk), sizeof(struct pcc_data));
-                // saved_states->pcc_state->cwnd = tp->snd_cwnd;
-            } else {
-                pr_err("Failed to allocate memory for pcc_state\n");
-            }
-            break;
+        // case PCC:
+        //     if (saved_states->pcc_state) {
+        //         kfree(saved_states->pcc_state);
+        //     }
+        //     saved_states->pcc_state = kmalloc(sizeof(struct pcc_data), GFP_KERNEL);
+        //     if (saved_states->pcc_state) {
+        //         memcpy(saved_states->pcc_state, inet_csk_ca(sk), sizeof(struct pcc_data));
+        //         // saved_states->pcc_state->cwnd = tp->snd_cwnd;
+        //     } else {
+        //         pr_err("Failed to allocate memory for pcc_state\n");
+        //     }
+        //     break;
         default:
             break;
     }
@@ -796,17 +796,17 @@ void mutant_switch_congestion_control(void) {
     //     // printk(KERN_INFO "Switching to PCC (ID: %d)", selected_proto_id);
     //     mutant_wrapper.current_ops = &tcp_pcc_cong_ops;
     //     break;
-    case BASE:
-        // printk(KERN_INFO "Switching to Base (ID: %d)", selected_proto_id);
-        mutant_wrapper.current_ops = &tcp_base;
-        break;
-    case BASE2:
-        // printk(KERN_INFO "Switching to Base2 (ID: %d)", selected_proto_id);
-        mutant_wrapper.current_ops = &tcp_base2;
-        break;
+    // case BASE:
+    //     // printk(KERN_INFO "Switching to Base (ID: %d)", selected_proto_id);
+    //     mutant_wrapper.current_ops = &tcp_base;
+    //     break;
+    // case BASE2:
+    //     // printk(KERN_INFO "Switching to Base2 (ID: %d)", selected_proto_id);
+    //     mutant_wrapper.current_ops = &tcp_base2;
+    //     break;
     default:
         // printk(KERN_INFO "Switching to default (Cubic)");
-    mutant_wrapper.current_ops = &cubictcp;
+        mutant_wrapper.current_ops = &cubictcp;
         break;
     }
 }

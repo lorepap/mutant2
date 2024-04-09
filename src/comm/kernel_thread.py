@@ -33,14 +33,13 @@ class KernelRequest(threading.Thread):
     def run(self):
         while True:
             try:
-
                 if self.comm.socket.fileno() == -1:
                     # Invalid file descriptor, break out of the loop
                     print("[KERNEL THREAD] Invalid file descriptor. Exiting...")
                     break
                 
                 # Use select with a timeout to implement a timer
-                readable, _, _ = select.select([self.comm.socket], [], [], 20) 
+                readable, _, _ = select.select([self.comm.socket], [], [], 10) 
 
                 if not readable:
                     # No data received within the timeout period

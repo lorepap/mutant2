@@ -6,6 +6,7 @@ import tf_agents
 from tf_agents.agents import tf_agent
 from tf_agents.bandits.agents.linear_thompson_sampling_agent import LinearThompsonSamplingAgent
 from tf_agents.bandits.agents.neural_linucb_agent import NeuralLinUCBAgent
+# from tf_agents.bandits.agents.lin_ucb_agent import LinUCBAgent
 from tf_agents.bandits.policies import linear_thompson_sampling_policy
 from tf_agents.trajectories import time_step as ts
 from tf_agents.trajectories import trajectory
