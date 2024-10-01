@@ -1,7 +1,7 @@
 # Linux Kernel Patch Installation Guide
 
 ## Overview
-This guide provides steps to install and apply a patch to the Linux kernel (version 5.4.231) and how to revert it if necessary. The system has been tested on Ubuntu 20.04.
+This guide provides steps to install and apply a patch to the Linux kernel (version 5.4.231) that includes Mutant kernel modifications. The system has been tested on Ubuntu 20.04.
 
 ## Prerequisites
 - Ubuntu 20.04 or similar Linux distribution
