@@ -165,6 +165,7 @@ dkms.conf
 
 src/.venv/
 .env/
+.venv/
 model/__pycache__
 environment/__pycache__
 network/__pycache__

@@ -12,6 +12,8 @@ from src.utilities.feature_extractor import FeatureExtractor
 from utilities.logger import Logger
 from utilities.utils import context
 
+import sys
+
 # Protocol mapping
 PROTOCOL_MAPPING = {
     "cubic": 0,
@@ -208,6 +210,9 @@ class Collector():
             self.kernel_thread.disable()
             self.kernel_thread.flush()
             # Averaging
+            if not _tmp:
+                print("No data collected. Error")
+                sys.exit(1)
             _avg_data = {feature: np.mean([d[feature] for d in _tmp]) if feature not in ('crt_proto_id', 'prev_proto_id', 'now') else _tmp[-1][feature] for feature in feature_names}
 
             for feature in feature_names:

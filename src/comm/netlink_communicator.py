@@ -5,7 +5,7 @@ import struct
 import traceback
 import errno
 import time
-import src.utilities.utils as utils
+import utilities.utils as utils
 
 NETLINK_TEST = 25
 

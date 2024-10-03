@@ -19,7 +19,7 @@ def run(args):
     runner.run_collection()
     # Stop communication
     runner.stop_communication()
-
+    
 
 if __name__ == '__main__':
     parser = ArgumentParser()

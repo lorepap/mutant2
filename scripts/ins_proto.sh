@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd ~/linux-5.4.231-mutant/net/ipv4
+cd /usr/src/linux-5.4.231/net/ipv4
 echo '--- Inserting protocols as modules ---'
 sudo insmod tcp_hybla.ko
 sudo insmod tcp_bbr.ko

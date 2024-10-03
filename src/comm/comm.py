@@ -16,7 +16,7 @@ ACTION_FLAG = 2
 INIT_COMM_FLAG = 1
 END_COMM_FLAG = 0
 
-# Base class for Trainer
+
 class CommManager():
 
     def __init__(self, k=None, log_dir_name='log/iperf', client_time=None, rtt=20, bw=48, bdp_mult=1, bw_factor=1,
@@ -45,7 +45,7 @@ class CommManager():
         # self.moderator: Moderator = Moderator(self.args.iperf == 1)
 
         self.client = IperfClient(self.min_rtt, 
-                self.bw, self.q_size, self.bw_factor, k, mahimahi_dir, iperf_dir, time=self.time,
+                self.bw, self.q_size, self.bw_factor, mahimahi_dir, iperf_dir, time=self.time,
                 log=log_mahimahi)
 
     def is_kernel_initialized(self) -> bool:
@@ -89,20 +89,13 @@ class CommManager():
 
 
     def start_client(self, tag: str) -> str:
-
         base_path = os.path.join(context.entry_dir, self.log_dir)
         utils.check_dir(base_path)
-
-        filename = f'{tag}.{utils.time_to_str()}.json'
-        
+        filename = f'{tag}.{utils.time_to_str()}.json'    
         log_filename = f'{base_path}/json/{filename}'
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-
-
         os.makedirs(os.path.join(context.entry_dir), exist_ok=True)
-        
         self.client.mahimahi_filename = f'log/collection/mahimahi/{tag}'
-
         try:
             self.client.start()
         # Continue with the main program logic here

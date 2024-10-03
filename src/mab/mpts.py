@@ -1,7 +1,7 @@
 import numpy as np
-from src.comm.kernel_thread import KernelRequest
-from src.utilities import utils
-from src.comm.netlink_communicator import NetlinkCommunicator
+from comm.kernel_thread import KernelRequest
+from utilities import utils
+from comm.netlink_communicator import NetlinkCommunicator
 import time
 import random 
 from tqdm import tqdm

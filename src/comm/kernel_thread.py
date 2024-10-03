@@ -3,7 +3,7 @@ import threading
 import traceback
 import select
 
-from src.comm.netlink_communicator import NetlinkCommunicator
+from comm.netlink_communicator import NetlinkCommunicator
 
 
 class KernelRequest(threading.Thread):

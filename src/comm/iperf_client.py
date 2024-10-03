@@ -23,8 +23,7 @@ from subprocess_wrappers import Popen, call, check_output, print_output, check_c
 import subprocess
 
 class IperfClient(threading.Thread):
-
-    def __init__(self, rtt, bw, q_size, bw_factor, k, mahimahi_dir, iperf_dir, time=86400, log=True) -> None:
+    def __init__(self, rtt, bw, q_size, bw_factor, mahimahi_dir, iperf_dir, time=86400, log=True) -> None:
         threading.Thread.__init__(self)
 
         self.ip = self._get_private_ip()
@@ -51,8 +50,8 @@ class IperfClient(threading.Thread):
             self._trace_d = f'wired{int(self.bw)}-{self.bw_factor}x-d'
             self._trace_u = f'wired{int(self.bw)}-{self.bw_factor}x-u'
 
-        self._down_log_file = f"downlink-{self._trace_d}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x-{k}.log"
-        self._up_log_file = f"uplink-{self._trace_u}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x-{k}.log"
+        self._down_log_file = f"downlink-{self._trace_d}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x.log"
+        self._up_log_file = f"uplink-{self._trace_u}-{self.bw}-{self.rtt}-{self.q_size}-{self.bw_factor}x.log"
 
     def _get_private_ip(self):
         """
@@ -63,7 +62,7 @@ class IperfClient(threading.Thread):
         
         # Search the output for the private IP address using a regular expression
         # pattern = r'inet (192(?:\.\d{1,3}){2}\.\d{1,3})'
-        pattern = r'inet (?:addr:)?(10\.0\.2\.15)'       
+        pattern = r'inet (?:addr:)?(10\.172\.13\.12)'       
         match = re.search(pattern, output)
 
         if match:
@@ -141,7 +140,7 @@ class IperfClient(threading.Thread):
             self._set_ip_forwarding()
 
             cmd = self._get_mahimahi_cmd() + self._get_iperf_cmd()
-            # print("[DEBUG] Command executing:", cmd)
+            print("[DEBUG] Command executing:", cmd)
 
             check_call(cmd)
 

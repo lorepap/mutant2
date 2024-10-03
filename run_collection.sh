@@ -1,3 +1,7 @@
+#!/bin/bash
+
+source .env/bin/activate
+
 steps=$1
 proto=$2
 bw=$3
@@ -12,4 +16,5 @@ if [ $# -ne 6 ]; then
 fi
 
 reset;
-python src/run_collection.py --steps $steps --proto $proto --bw $bw --rtt $rtt --bdp_mult $bdp_mult --bw_factor $bw_factor
+
+sudo "$(which python)" src/run_collection.py --steps $steps --proto $proto --bw $bw --rtt $rtt --bdp_mult $bdp_mult --bw_factor $bw_factor
